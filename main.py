@@ -739,13 +739,13 @@ fig3d_class.add_trace(go.Scatter3d(
     name='Растительность'
 ))
 # Позиция сканера
-fig3d_class.add_trace(go.Scatter3d(
-    x=[scanner_pos[0]], y=[scanner_pos[1]], z=[scanner_pos[2]],
-    mode='markers+text',
-    marker=dict(size=8, color='red', symbol='diamond'),
-    text=['TLS сканер'], textposition='top center',
-    name='Сканер'
-))
+# fig3d_class.add_trace(go.Scatter3d(
+#     x=[scanner_pos[0]], y=[scanner_pos[1]], z=[scanner_pos[2]],
+#     mode='markers+text',
+#     marker=dict(size=8, color='red', symbol='diamond'),
+#     text=['TLS сканер'], textposition='top center',
+#     name='Сканер'
+# ))
 fig3d_class.update_layout(
     title='Классифицированное облако (земля / растительность)',
     scene=dict(
