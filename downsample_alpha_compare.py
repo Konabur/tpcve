@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import alphashape
@@ -82,6 +84,20 @@ def alpha_layered(points: np.ndarray, alpha: float, dz: float):
     return layers, total
 
 
+def _compute_one(task):
+    """Воркер для пула процессов.
+
+    task: (idx, points, alpha, layered, dz)
+    return: (idx, kind, payload, volume)
+    """
+    idx, points, alpha, layered, dz = task
+    if layered:
+        layers, vol = alpha_layered(points, alpha, dz)
+        return idx, "layers", layers, vol
+    v, f, vol = alpha_mesh(points, alpha)
+    return idx, "mesh", (v, f), vol
+
+
 def add_cloud(fig, points, row, col, color, name):
     fig.add_trace(go.Scatter3d(
         x=points[:, 0], y=points[:, 1], z=points[:, 2],
@@ -115,35 +131,46 @@ def add_layers(fig, layers, row, col, color):
 
 
 def make_figure(voxel_pts, random_pts, alphas, voxel_mm, seed, source_name,
-                layered=False, layer_dz=0.02, volumes_out=None):
+                layered=False, layer_dz=0.02, volumes_out=None,
+                workers=1):
     n_rows = len(alphas)
+    tag = f"layered dz={layer_dz*1000:g}мм" if layered else "3D"
+
+    # Сборка задач: для каждой α — две задачи (voxel, random).
+    # idx кодирует (row, col): row = i (1..n_rows), col = 1 (voxel) | 2 (random).
+    tasks = []
+    for i, a in enumerate(alphas, start=1):
+        tasks.append(((i, 1), voxel_pts, a, layered, layer_dz))
+        tasks.append(((i, 2), random_pts, a, layered, layer_dz))
+
+    results: dict[tuple[int, int], tuple] = {}
+    bar = tqdm(total=len(tasks), desc=f"alpha-shape ({tag}, workers={workers})",
+               unit="mesh", leave=False, dynamic_ncols=True)
+    if workers <= 1:
+        for task in tasks:
+            idx, kind, payload, vol = _compute_one(task)
+            results[idx] = (kind, payload, vol)
+            bar.update(1)
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            futures = [ex.submit(_compute_one, t) for t in tasks]
+            for fut in as_completed(futures):
+                idx, kind, payload, vol = fut.result()
+                results[idx] = (kind, payload, vol)
+                bar.update(1)
+    bar.close()
+
     titles = []
     items = {"voxel": [], "random": []}
-    tag = f"layered dz={layer_dz*1000:g}мм" if layered else "3D"
-    bar = tqdm(total=len(alphas) * 2, desc=f"alpha-shape ({tag})",
-               unit="mesh", leave=False, dynamic_ncols=True)
-    for a in alphas:
-        bar.set_postfix_str(f"α={a:g} voxel")
-        if layered:
-            v_layers, v_vol = alpha_layered(voxel_pts, a, layer_dz)
-            items["voxel"].append(("layers", v_layers, v_vol))
-        else:
-            v_v, v_f, v_vol = alpha_mesh(voxel_pts, a)
-            items["voxel"].append(("mesh", (v_v, v_f), v_vol))
-        bar.update(1)
-        bar.set_postfix_str(f"α={a:g} random")
-        if layered:
-            r_layers, r_vol = alpha_layered(random_pts, a, layer_dz)
-            items["random"].append(("layers", r_layers, r_vol))
-        else:
-            r_v, r_f, r_vol = alpha_mesh(random_pts, a)
-            items["random"].append(("mesh", (r_v, r_f), r_vol))
-        bar.update(1)
+    for i, a in enumerate(alphas, start=1):
+        v_kind, v_payload, v_vol = results[(i, 1)]
+        r_kind, r_payload, r_vol = results[(i, 2)]
+        items["voxel"].append((v_kind, v_payload, v_vol))
+        items["random"].append((r_kind, r_payload, r_vol))
         titles.append(f"Voxel · α={a:g} ({tag}) · V={v_vol:.5f} м³")
         titles.append(f"Random · α={a:g} ({tag}) · V={r_vol:.5f} м³")
         if volumes_out is not None:
             volumes_out.append((a, v_vol, r_vol))
-    bar.close()
 
     fig = make_subplots(
         rows=n_rows, cols=2,
@@ -201,6 +228,10 @@ def main() -> int:
     p.add_argument("--sor-neighbors", type=int, default=20)
     p.add_argument("--sor-std-ratio", type=float, default=2.0)
     p.add_argument("--output-dir", default="results/downsample_alpha")
+    p.add_argument("--workers", type=int,
+                   default=max(1, (os.cpu_count() or 2) // 2),
+                   help="Процессы для параллельного alpha-shape "
+                        "(default: cpu/2)")
     args = p.parse_args()
 
     data = load_real_cloud(args.cloud, units=args.units)
@@ -244,7 +275,8 @@ def main() -> int:
                           args.seed, source_name,
                           layered=args.layered,
                           layer_dz=args.layer_dz / 1000.0,
-                          volumes_out=vols)
+                          volumes_out=vols,
+                          workers=args.workers)
         suffix = f"_layered{args.layer_dz:g}mm" if args.layered else ""
         out = out_dir / f"{source_name}_voxel_{size_mm:g}mm{suffix}.html"
         fig.write_html(str(out), include_plotlyjs="cdn")
