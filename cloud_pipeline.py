@@ -46,7 +46,7 @@ def preprocess_cloud(path: str, cfg: PreprocessConfig) -> PreprocessResult:
     if ext == ".npz":
         data = load_cloud(str(p))
     else:
-        data = load_real_cloud(str(p), units=cfg.units)
+        data = load_real_cloud(str(p), units=cfg.units, verbose=cfg.verbose)
 
     pts = np.asarray(data["all_pts_noisy"]).copy()
     scanner_pos = np.asarray(data.get("scanner_pos", np.zeros(3)))

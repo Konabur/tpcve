@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 
 from cloud_pipeline import PreprocessConfig, preprocess_cloud
+from tools.autoname import build_name, default_path
 from volume_methods import (
     DEFAULT_ALPHAS,
     DEFAULT_VOXEL_SIZES,
@@ -48,6 +49,8 @@ class BatchConfig:
     alphas: list[float]
     resume: bool
     limit: int | None
+    analyze: bool = False
+    plots: bool = False
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
 
 
@@ -149,9 +152,13 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchConfig:
                      help="Текстовый список 'path biomass c3 c4 c5'")
     src.add_argument("--input-dir",
                      help="Папка с .pcd (обходится рекурсивно)")
-    p.add_argument("--base-dir", default="data",
-                   help="База для путей из --list (default: data)")
-    p.add_argument("--output-csv", default="results/batch.csv")
+    p.add_argument("--base-dir",
+                   default=os.getenv("TPCVE_BASE_DIR", "data"),
+                   help="База для путей из --list "
+                        "(env: TPCVE_BASE_DIR, default: data)")
+    p.add_argument("--output-csv", default=None,
+                   help="Если не задан — имя строится автоматически в "
+                        "results/volume_csv/voxel/")
     p.add_argument("--methods", default="voxel",
                    help=f"Список через запятую из {sorted(METHODS)}")
     p.add_argument("--voxel-sizes", default=None,
@@ -162,6 +169,15 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchConfig:
     p.add_argument("--resume", action="store_true",
                    help="Пропускать файлы, уже записанные в CSV")
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--analyze", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="После batch вызвать analyze_correlation.py "
+                        "(default: on; отключить --no-analyze)")
+    p.add_argument("--plots", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="При --analyze сохранить scatter-плоты в "
+                        "results/regression_plots/voxel/<stem>/ "
+                        "(default: on; отключить --no-plots)")
     # препроцессинг
     p.add_argument("--units", default=os.getenv("TPCVE_UNITS", "auto"),
                    choices=["auto", "m", "cm", "mm"])
@@ -171,7 +187,7 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchConfig:
     p.add_argument("--downsample", type=float,
                    default=float(os.getenv("TPCVE_DOWNSAMPLE", "0") or 0))
     p.add_argument("--sor-std-ratio", type=float,
-                   default=float(os.getenv("TPCVE_SOR_STD_RATIO", "1.5")))
+                   default=float(os.getenv("TPCVE_SOR_STD_RATIO", "2.0")))
     p.add_argument("--min-range", type=float,
                    default=float(os.getenv("TPCVE_MIN_RANGE", "0") or 0))
     p.add_argument("--height-threshold", type=float, default=0.04)
@@ -183,21 +199,48 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchConfig:
     if bad:
         p.error(f"Неизвестные методы: {bad}. Доступно: {sorted(METHODS)}")
 
-    voxel_sizes = (DEFAULT_VOXEL_SIZES if not a.voxel_sizes
-                   else [float(x) / 1000 for x in a.voxel_sizes.split(",")])
-    alphas = (DEFAULT_ALPHAS if not a.alphas
-              else [float(x) for x in a.alphas.split(",")])
+    voxel_sizes_mm = ([float(x) for x in a.voxel_sizes.split(",")]
+                      if a.voxel_sizes else None)
+    voxel_sizes = (DEFAULT_VOXEL_SIZES if voxel_sizes_mm is None
+                   else [v / 1000 for v in voxel_sizes_mm])
+    alphas_user = ([float(x) for x in a.alphas.split(",")]
+                   if a.alphas else None)
+    alphas = DEFAULT_ALPHAS if alphas_user is None else alphas_user
+
+    if a.output_csv is None:
+        extra: dict = {}
+        if abs(a.sor_std_ratio - 2.0) > 1e-9:
+            extra["sor"] = a.sor_std_ratio
+        if a.flip_z:
+            extra["flipz"] = True
+        if a.downsample > 0:
+            extra["ds"] = a.downsample
+        if a.min_range > 0:
+            extra["r"] = a.min_range
+        method_uses_alpha = any(m in {"alpha", "hull_alpha"} for m in methods)
+        name = build_name(
+            source=a.list_file or a.input_dir,
+            source_kind="list" if a.list_file else "dir",
+            voxels_mm=voxel_sizes_mm,
+            alphas=alphas_user if method_uses_alpha else None,
+            extra=extra,
+        )
+        output_csv = default_path("volume_voxel", name, ".csv")
+    else:
+        output_csv = Path(a.output_csv)
 
     return BatchConfig(
         list_file=a.list_file,
         input_dir=a.input_dir,
         base_dir=Path(a.base_dir),
-        output_csv=Path(a.output_csv),
+        output_csv=output_csv,
         methods=methods,
         voxel_sizes=voxel_sizes,
         alphas=alphas,
         resume=a.resume,
         limit=a.limit,
+        analyze=a.analyze,
+        plots=a.plots,
         preprocess=PreprocessConfig(
             units=a.units,
             flip_z=a.flip_z,
@@ -246,6 +289,14 @@ def main(argv: Iterable[str] | None = None) -> int:
             bar.set_postfix(err=n_err, refresh=False)
 
     print(f"\nГотово за {time.time() - t0:.1f}s. CSV: {cfg.output_csv}")
+
+    if cfg.analyze:
+        import subprocess
+        cmd = [sys.executable, "analyze_correlation.py", str(cfg.output_csv)]
+        if cfg.plots:
+            cmd.append("--plots-dir")
+        print(f"\n>>> {' '.join(cmd)}")
+        subprocess.run(cmd, check=False)
     return 0
 
 

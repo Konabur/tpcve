@@ -19,6 +19,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from generate_cloud import load_real_cloud
+from tools.autoname import build_name, default_path
 
 
 def voxel_downsample(points: np.ndarray, voxel_m: float) -> np.ndarray:
@@ -97,7 +98,8 @@ def main() -> int:
                    help="SOR nb_neighbors (default: 20)")
     p.add_argument("--sor-std-ratio", type=float, default=2.0,
                    help="SOR std_ratio (default: 2.0)")
-    p.add_argument("--output-dir", default="results/downsample_compare")
+    p.add_argument("--output-dir", default=None,
+                   help="Если не задан — results/downsample/downsample_compare/<auto>/")
     args = p.parse_args()
 
     data = load_real_cloud(args.cloud, units=args.units)
@@ -117,7 +119,19 @@ def main() -> int:
     if not sizes_mm:
         raise SystemExit("Не задано ни одного размера (передайте voxel_sizes_mm или --auto)")
 
-    out_dir = Path(args.output_dir)
+    if args.output_dir:
+        out_dir = Path(args.output_dir)
+    else:
+        extra: dict = {}
+        if args.sor:
+            extra["sor"] = args.sor_std_ratio
+        name = build_name(
+            source=args.cloud, source_kind="list",
+            voxels_mm=args.voxel_sizes_mm,
+            auto_voxel=args.auto,
+            extra=extra,
+        )
+        out_dir = default_path("downsample_compare", name, ext="")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sor_on = args.sor

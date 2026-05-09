@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from tools.autoname import default_path
+
 GROUP_COLS = ["voxel_mm", "alpha", "mode", "layer_dz_mm"]
 
 
@@ -53,8 +55,12 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("csv", help="CSV из batch_alpha.py")
     p.add_argument("--target", default="biomass")
-    p.add_argument("--plots-dir", default=None,
-                   help="Если указано — сохранить scatter+линию для каждой группы")
+    p.add_argument("--output", default=None,
+                   help="Куда сохранить CSV с результатами регрессии "
+                        "(default: results/regression_csv/alpha/<stem>_regression.csv)")
+    p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None,
+                   help="Если указано — сохранить scatter+линию для каждой группы. "
+                        "Без значения: results/regression_plots/alpha/<stem>/")
     p.add_argument("--top", type=int, default=None)
     p.add_argument("--source", choices=["voxel", "random", "both"],
                    default="voxel",
@@ -106,7 +112,12 @@ def main() -> int:
                                       float_format=lambda v: f"{v:.4g}"))
     print("=" * 110)
 
-    out_csv = Path(args.csv).with_name(Path(args.csv).stem + "_regression.csv")
+    stem = Path(args.csv).stem
+    if args.output:
+        out_csv = Path(args.output)
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_csv = default_path("regression_alpha", stem + "_regression", ".csv")
     res_df.to_csv(out_csv, index=False)
     print(f"\nСохранено: {out_csv}")
 
@@ -115,7 +126,10 @@ def main() -> int:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        out = Path(args.plots_dir)
+        if args.plots_dir == "__auto__":
+            out = default_path("regression_plots_alpha", stem, ext="")
+        else:
+            out = Path(args.plots_dir)
         out.mkdir(parents=True, exist_ok=True)
         for r in res_df.itertuples():
             grp = df[(df["voxel_mm"] == r.voxel_mm)

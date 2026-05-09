@@ -35,6 +35,7 @@ from batch_process import (
 from downsample_alpha_compare import _compute_one
 from downsample_compare import random_downsample, sor as apply_sor, voxel_downsample
 from generate_cloud import load_real_cloud
+from tools.autoname import build_name, default_path
 
 
 BASE_COLUMNS = [
@@ -74,10 +75,12 @@ class BatchAlphaConfig:
     workers: int
     resume: bool
     limit: int | None
+    analyze: bool = True
+    plots: bool = True
 
 
 def load_and_normalize(path: Path, units: str, flip_z: bool) -> np.ndarray:
-    data = load_real_cloud(str(path), units=units)
+    data = load_real_cloud(str(path), units=units, verbose=False)
     pts = np.asarray(data["all_pts_noisy"]).copy()
     if len(pts) == 0:
         return pts
@@ -159,8 +162,13 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--list", dest="list_file")
     src.add_argument("--input-dir")
-    p.add_argument("--base-dir", default="data")
-    p.add_argument("--output-csv", default="results/batch_alpha.csv")
+    p.add_argument("--base-dir",
+                   default=os.getenv("TPCVE_BASE_DIR", "data"),
+                   help="База для путей из --list "
+                        "(env: TPCVE_BASE_DIR, default: data)")
+    p.add_argument("--output-csv", default=None,
+                   help="Если не задан — имя строится автоматически в "
+                        "results/volume_csv/alpha/")
     p.add_argument("--voxel-sizes", default=None,
                    help="Размеры вокселей в мм через запятую")
     p.add_argument("--auto", action="store_true",
@@ -188,6 +196,15 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
                    default=max(1, (os.cpu_count() or 2) // 2))
     p.add_argument("--resume", action="store_true")
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--analyze", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="После batch вызвать analyze_correlation_alpha.py "
+                        "(default: on; отключить --no-analyze)")
+    p.add_argument("--plots", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="При --analyze сохранить scatter-плоты в "
+                        "results/regression_plots/alpha/<stem>/ "
+                        "(default: on; отключить --no-plots)")
     a = p.parse_args(argv)
 
     voxel_sizes = ([float(x) for x in a.voxel_sizes.split(",")]
@@ -198,9 +215,31 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
     if not voxel_sizes and not a.auto:
         p.error("Нужен --voxel-sizes или --auto")
 
+    if a.output_csv is None:
+        extra: dict = {}
+        if abs(a.sor_std_ratio - 2.0) > 1e-9:
+            extra["sor"] = a.sor_std_ratio
+        if a.flip_z:
+            extra["flipz"] = True
+        if a.with_random:
+            extra["rand"] = True
+        name = build_name(
+            source=a.list_file or a.input_dir,
+            source_kind="list" if a.list_file else "dir",
+            voxels_mm=voxel_sizes,
+            auto_voxel=a.auto,
+            alphas=alphas,
+            layered=a.layered,
+            layer_dz_mm=a.layer_dz if a.layered else None,
+            extra=extra,
+        )
+        output_csv = default_path("volume_alpha", name, ".csv")
+    else:
+        output_csv = Path(a.output_csv)
+
     return BatchAlphaConfig(
         list_file=a.list_file, input_dir=a.input_dir,
-        base_dir=Path(a.base_dir), output_csv=Path(a.output_csv),
+        base_dir=Path(a.base_dir), output_csv=output_csv,
         voxel_sizes_mm=voxel_sizes, auto_voxel=a.auto,
         alphas=alphas,
         layered=a.layered, layer_dz_mm=a.layer_dz,
@@ -210,6 +249,7 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
         sor_std_ratio=a.sor_std_ratio,
         seed=a.seed, workers=a.workers,
         resume=a.resume, limit=a.limit,
+        analyze=a.analyze, plots=a.plots,
     )
 
 
@@ -331,7 +371,15 @@ def process_batch(cfg: BatchAlphaConfig) -> int:
 
 def main(argv: Iterable[str] | None = None) -> int:
     cfg = parse_args(argv)
-    return process_batch(cfg)
+    rc = process_batch(cfg)
+    if cfg.analyze:
+        import subprocess
+        cmd = [sys.executable, "analyze_correlation_alpha.py", str(cfg.output_csv)]
+        if cfg.plots:
+            cmd.append("--plots-dir")
+        print(f"\n>>> {' '.join(cmd)}")
+        subprocess.run(cmd, check=False)
+    return rc
 
 
 if __name__ == "__main__":

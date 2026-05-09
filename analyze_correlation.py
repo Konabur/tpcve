@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from tools.autoname import default_path
+
 NON_METHOD_COLS = {"file", "biomass", "col3", "col4", "col5",
                    "n_input", "n_after_sor", "n_vegetation", "error"}
 
@@ -33,8 +35,12 @@ def fit_column(x: np.ndarray, y: np.ndarray) -> dict:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("csv", help="CSV из batch_process.py")
-    p.add_argument("--plots-dir", default=None,
-                   help="Если указано — сохранить scatter+линию для каждого метода")
+    p.add_argument("--output", default=None,
+                   help="Куда сохранить CSV с результатами регрессии "
+                        "(default: results/regression_csv/voxel/<stem>_regression.csv)")
+    p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None,
+                   help="Если указано — сохранить scatter+линию для каждого метода. "
+                        "Без значения: results/regression_plots/voxel/<stem>/")
     p.add_argument("--target", default="biomass",
                    help="Целевая колонка (default: biomass)")
     p.add_argument("--top", type=int, default=None,
@@ -70,7 +76,12 @@ def main() -> int:
     print(res.to_string(index=False, float_format=lambda v: f"{v:.4g}"))
     print("=" * 90)
 
-    out_csv = Path(args.csv).with_name(Path(args.csv).stem + "_regression.csv")
+    stem = Path(args.csv).stem
+    if args.output:
+        out_csv = Path(args.output)
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_csv = default_path("regression_voxel", stem + "_regression", ".csv")
     res.to_csv(out_csv, index=False)
     print(f"\nСохранено: {out_csv}")
 
@@ -79,7 +90,10 @@ def main() -> int:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        out = Path(args.plots_dir)
+        if args.plots_dir == "__auto__":
+            out = default_path("regression_plots_voxel", stem, ext="")
+        else:
+            out = Path(args.plots_dir)
         out.mkdir(parents=True, exist_ok=True)
         for r in res.itertuples():
             col = r.method

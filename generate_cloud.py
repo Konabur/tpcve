@@ -358,7 +358,7 @@ def load_db3_cloud(filepath):
     return np.vstack(all_points)
 
 
-def load_real_cloud(filepath, units='auto'):
+def load_real_cloud(filepath, units='auto', verbose=True):
     """
     Загрузка реального облака точек из различных форматов.
 
@@ -410,20 +410,25 @@ def load_real_cloud(filepath, units='auto'):
     # Определение и конвертация единиц
     if units == 'auto':
         detected_units = detect_units(points)
-        print(f"  Автоопределение единиц: {detected_units}")
+        if verbose:
+            print(f"  Автоопределение единиц: {detected_units}")
     else:
         detected_units = units
-        print(f"  Используются указанные единицы: {units}")
+        if verbose:
+            print(f"  Используются указанные единицы: {units}")
 
     # Конвертация в метры
     if detected_units == 'mm':
         points = points / 1000.0
-        print(f"  Координаты конвертированы: мм → м (÷1000)")
+        if verbose:
+            print(f"  Координаты конвертированы: мм → м (÷1000)")
     elif detected_units == 'cm':
         points = points / 100.0
-        print(f"  Координаты конвертированы: см → м (÷100)")
+        if verbose:
+            print(f"  Координаты конвертированы: см → м (÷100)")
     elif detected_units == 'm':
-        print(f"  Координаты уже в метрах")
+        if verbose:
+            print(f"  Координаты уже в метрах")
 
     result = {
         'all_pts_noisy': points,

@@ -25,6 +25,7 @@ from downsample_compare import (
     voxel_downsample,
 )
 from generate_cloud import load_real_cloud
+from tools.autoname import build_name, default_path
 
 
 def alpha_mesh(points: np.ndarray, alpha: float):
@@ -227,7 +228,8 @@ def main() -> int:
                    help="Применить SOR после каждого downsample")
     p.add_argument("--sor-neighbors", type=int, default=20)
     p.add_argument("--sor-std-ratio", type=float, default=2.0)
-    p.add_argument("--output-dir", default="results/downsample_alpha")
+    p.add_argument("--output-dir", default=None,
+                   help="Если не задан — results/downsample/downsample_alpha/<auto>/")
     p.add_argument("--workers", type=int,
                    default=max(1, (os.cpu_count() or 2) // 2),
                    help="Процессы для параллельного alpha-shape "
@@ -251,7 +253,22 @@ def main() -> int:
     if not sizes_mm:
         raise SystemExit("Не задано ни одного размера (передайте voxel_sizes_mm или --auto)")
 
-    out_dir = Path(args.output_dir)
+    if args.output_dir:
+        out_dir = Path(args.output_dir)
+    else:
+        extra: dict = {}
+        if args.sor:
+            extra["sor"] = args.sor_std_ratio
+        name = build_name(
+            source=args.cloud, source_kind="list",
+            voxels_mm=args.voxel_sizes_mm,
+            auto_voxel=args.auto,
+            alphas=args.alphas,
+            layered=args.layered,
+            layer_dz_mm=args.layer_dz if args.layered else None,
+            extra=extra,
+        )
+        out_dir = default_path("downsample_alpha", name, ext="")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     summary = []  # (size_mm, alpha, v_vol, r_vol)
