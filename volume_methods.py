@@ -18,9 +18,14 @@ DEFAULT_ALPHAS = [1.0, 5.0, 10.0, 20.0, 50.0]
 
 
 def voxel_volume(points: np.ndarray, voxel_size: float = 0.01):
-    indices = np.floor(points / voxel_size).astype(int)
-    unique_voxels = set(map(tuple, indices))
-    return len(unique_voxels) * (voxel_size ** 3), len(unique_voxels)
+    if len(points) == 0:
+        return 0.0, 0
+    indices = np.floor(points / voxel_size).astype(np.int64)
+    indices -= indices.min(axis=0)
+    dims = indices.max(axis=0) + 1
+    keys = (indices[:, 0] * dims[1] + indices[:, 1]) * dims[2] + indices[:, 2]
+    n = int(np.unique(keys).size)
+    return n * (voxel_size ** 3), n
 
 
 def convex_hull_volume(points: np.ndarray) -> float:

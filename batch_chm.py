@@ -64,25 +64,49 @@ def load_and_normalize(path: Path, units: str, flip_z: bool) -> np.ndarray:
     return pts
 
 
-def chm_volume(points: np.ndarray, cell_size_m: float,
-               percentile: float) -> tuple[float, int]:
+def _bin_and_sort(points: np.ndarray, cell_size_m: float):
+    """Сгруппировать точки по XY-ячейкам и отсортировать Z в каждой группе.
+
+    Возвращает (z_sorted, starts, n_cells) или None, если точек нет.
+    """
     if len(points) == 0:
-        return 0.0, 0
+        return None
     x, y, z = points[:, 0], points[:, 1], points[:, 2]
     ix = np.floor((x - x.min()) / cell_size_m).astype(np.int64)
     iy = np.floor((y - y.min()) / cell_size_m).astype(np.int64)
     key = ix * (iy.max() + 1) + iy
-    order = np.argsort(key, kind="stable")
-    key_s, z_s = key[order], z[order]
-    uniq, starts = np.unique(key_s, return_index=True)
-    ends = np.r_[starts[1:], len(key_s)]
-    heights = np.fromiter(
-        (np.percentile(z_s[s:e], percentile)
-         for s, e in zip(starts, ends)),
-        dtype=float, count=len(uniq),
+    order = np.lexsort((z, key))
+    key_s = key[order]
+    z_s = z[order]
+    boundaries = np.concatenate(
+        ([0], np.flatnonzero(np.diff(key_s)) + 1, [len(key_s)])
     )
-    area = cell_size_m ** 2
-    return float(heights.sum() * area), len(uniq)
+    starts = boundaries[:-1]
+    ends = boundaries[1:]
+    return z_s, starts, ends
+
+
+def chm_volume_from_bins(z_s: np.ndarray, starts: np.ndarray, ends: np.ndarray,
+                         cell_size_m: float, percentile: float
+                         ) -> tuple[float, int]:
+    lengths = ends - starts
+    idx_f = (percentile / 100.0) * (lengths - 1)
+    idx_lo = np.floor(idx_f).astype(np.int64)
+    idx_hi = np.minimum(idx_lo + 1, lengths - 1)
+    frac = idx_f - idx_lo
+    lo = z_s[starts + idx_lo]
+    hi = z_s[starts + idx_hi]
+    heights = lo + frac * (hi - lo)
+    return float(heights.sum() * cell_size_m * cell_size_m), int(len(starts))
+
+
+def chm_volume(points: np.ndarray, cell_size_m: float,
+               percentile: float) -> tuple[float, int]:
+    binned = _bin_and_sort(points, cell_size_m)
+    if binned is None:
+        return 0.0, 0
+    z_s, starts, ends = binned
+    return chm_volume_from_bins(z_s, starts, ends, cell_size_m, percentile)
 
 
 def parse_args(argv: Iterable[str] | None = None) -> BatchChmConfig:
@@ -226,6 +250,12 @@ def process_batch(cfg: BatchChmConfig) -> int:
 
             for cell_mm in cfg.cell_sizes_mm:
                 cell_m = cell_mm / 1000.0
+                # биннинг считаем один раз на cell_size, percentile
+                # переиспользует z_sorted/starts/ends
+                try:
+                    binned = _bin_and_sort(veg, cell_m)
+                except Exception as e:
+                    binned = e
                 for q in cfg.percentiles:
                     base = {
                         "file": item.rel_path, **item.labels,
@@ -234,12 +264,20 @@ def process_batch(cfg: BatchChmConfig) -> int:
                     }
                     if _row_key(base) in done_keys:
                         continue
-                    try:
-                        v, n_cells = chm_volume(veg, cell_m, q)
-                        base["V_chm"] = v
-                        base["n_cells"] = n_cells
-                    except Exception as e:
-                        base["error"] = f"{type(e).__name__}: {e}"
+                    if isinstance(binned, Exception):
+                        base["error"] = f"{type(binned).__name__}: {binned}"
+                    elif binned is None:
+                        base["V_chm"] = 0.0
+                        base["n_cells"] = 0
+                    else:
+                        try:
+                            z_s, starts, ends = binned
+                            v, n_cells = chm_volume_from_bins(
+                                z_s, starts, ends, cell_m, q)
+                            base["V_chm"] = v
+                            base["n_cells"] = n_cells
+                        except Exception as e:
+                            base["error"] = f"{type(e).__name__}: {e}"
                     writer.writerow(base)
                     n_done += 1
             f.flush()
