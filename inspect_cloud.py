@@ -72,24 +72,9 @@ def inspect_cloud(filepath):
     print("СТАТИСТИКА РАССТОЯНИЙ")
     print("=" * 60)
 
-    # Расстояния между соседними точками (выборка для скорости)
-    sample_size = min(1000, len(points))
-    sample_idx = np.random.choice(len(points), sample_size, replace=False)
-    sample_points = points[sample_idx]
-
-    # Вычисляем расстояния до ближайших соседей
-    pcd_sample = o3d.geometry.PointCloud()
-    pcd_sample.points = o3d.utility.Vector3dVector(sample_points)
-    kdtree = o3d.geometry.KDTreeFlann(pcd_sample)
-
-    nearest_dists = []
-    for i in range(len(sample_points)):
-        [k, idx, dist] = kdtree.search_knn_vector_3d(sample_points[i], 2)
-        if len(dist) > 1:
-            nearest_dists.append(np.sqrt(dist[1]))
-
-    if nearest_dists:
-        nearest_dists = np.array(nearest_dists)
+    # Расстояния до ближайшего соседа (на полном облаке)
+    nearest_dists = np.asarray(pcd.compute_nearest_neighbor_distance())
+    if len(nearest_dists) > 0:
         print(f"Среднее расстояние до ближайшего соседа: {nearest_dists.mean():.6f}")
         print(f"Медианное расстояние: {np.median(nearest_dists):.6f}")
         print(f"Min расстояние: {nearest_dists.min():.6f}")
