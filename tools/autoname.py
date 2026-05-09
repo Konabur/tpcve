@@ -13,10 +13,13 @@ RESULTS_ROOT = Path("results")
 KIND_DIRS: dict[str, Path] = {
     "volume_voxel":           RESULTS_ROOT / "volume_csv" / "voxel",
     "volume_alpha":           RESULTS_ROOT / "volume_csv" / "alpha",
+    "volume_chm":             RESULTS_ROOT / "volume_csv" / "chm",
     "regression_voxel":       RESULTS_ROOT / "regression_csv" / "voxel",
     "regression_alpha":       RESULTS_ROOT / "regression_csv" / "alpha",
+    "regression_chm":         RESULTS_ROOT / "regression_csv" / "chm",
     "regression_plots_voxel": RESULTS_ROOT / "regression_plots" / "voxel",
     "regression_plots_alpha": RESULTS_ROOT / "regression_plots" / "alpha",
+    "regression_plots_chm":   RESULTS_ROOT / "regression_plots" / "chm",
     "downsample_compare":     RESULTS_ROOT / "downsample" / "downsample_compare",
     "downsample_alpha":       RESULTS_ROOT / "downsample" / "downsample_alpha",
 }
@@ -54,11 +57,14 @@ def build_name(
     alphas: Iterable | None = None,
     layered: bool = False,
     layer_dz_mm: float | None = None,
+    cell_sizes_mm: Iterable | None = None,
+    percentiles: Iterable | None = None,
     extra: dict | None = None,
 ) -> str:
     """Собрать имя файла из параметров.
 
-    Формат: <source>[_v<sizes>][_vauto][_a<alphas>][_layered][_dz<dz>][_<k><v>...]
+    Формат: <source>[_v<sizes>][_vauto][_a<alphas>][_layered][_dz<dz>]
+            [_c<cells>][_p<percentiles>][_<k><v>...]
     """
     parts: list[str] = []
 
@@ -80,6 +86,14 @@ def build_name(
         parts.append("layered")
         if layer_dz_mm is not None:
             parts.append(f"dz{_fmt_num(layer_dz_mm)}")
+
+    c_tok = _list_token("c", list(cell_sizes_mm) if cell_sizes_mm else [])
+    if c_tok:
+        parts.append(c_tok)
+
+    p_tok = _list_token("p", list(percentiles) if percentiles else [])
+    if p_tok:
+        parts.append(p_tok)
 
     if extra:
         for k, v in extra.items():
