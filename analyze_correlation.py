@@ -21,6 +21,12 @@ NON_METHOD_COLS = {"file", "biomass", "col3", "col4", "col5",
 
 def fit_column(x: np.ndarray, y: np.ndarray) -> dict:
     res = stats.linregress(x, y)
+    y_pred = res.slope * x + res.intercept
+    resid = y - y_pred
+    rmse = float(np.sqrt(np.mean(resid ** 2)))
+    y_mean = float(np.mean(y))
+    rmse_pct = rmse / y_mean * 100 if y_mean > 0 else float("nan")
+    bias = float(np.mean(resid))
     return {
         "n": len(x),
         "slope": res.slope,
@@ -29,6 +35,9 @@ def fit_column(x: np.ndarray, y: np.ndarray) -> dict:
         "r": res.rvalue,
         "p_value": res.pvalue,
         "stderr": res.stderr,
+        "rmse": rmse,
+        "rmse_pct": rmse_pct,
+        "bias": bias,
     }
 
 
@@ -109,7 +118,9 @@ def main() -> int:
             ax.scatter(x, y, s=20, alpha=0.6)
             ax.plot(xs, ys, "r-", lw=1.5,
                     label=f"y={r.slope:.3g}·x+{r.intercept:.3g}\n"
-                          f"R²={r.r2:.3f}, p={r.p_value:.2g}, n={r.n}")
+                          f"R²={r.r2:.3f}, p={r.p_value:.2g}, n={r.n}\n"
+                          f"RMSE={r.rmse:.3g} ({r.rmse_pct:.1f}%), "
+                          f"bias={r.bias:.2g}")
             ax.set_xlabel(f"{col} (м³)")
             ax.set_ylabel(args.target)
             ax.set_title(f"{args.target} ~ {col}")

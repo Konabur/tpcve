@@ -25,6 +25,12 @@ GROUP_COLS = ["voxel_mm", "alpha", "mode", "layer_dz_mm"]
 
 def fit(x: np.ndarray, y: np.ndarray) -> dict:
     res = stats.linregress(x, y)
+    y_pred = res.slope * x + res.intercept
+    resid = y - y_pred
+    rmse = float(np.sqrt(np.mean(resid ** 2)))
+    y_mean = float(np.mean(y))
+    rmse_pct = rmse / y_mean * 100 if y_mean > 0 else float("nan")
+    bias = float(np.mean(resid))
     return {
         "n": len(x),
         "slope": res.slope,
@@ -33,6 +39,9 @@ def fit(x: np.ndarray, y: np.ndarray) -> dict:
         "r": res.rvalue,
         "p_value": res.pvalue,
         "stderr": res.stderr,
+        "rmse": rmse,
+        "rmse_pct": rmse_pct,
+        "bias": bias,
     }
 
 
@@ -107,7 +116,7 @@ def main() -> int:
     print(f"\nЦель: {args.target} ~ V   (групп: {len(res_df)})")
     print("=" * 110)
     show_cols = ["method", "source", "n", "slope", "intercept",
-                 "r", "r2", "p_value"]
+                 "r", "r2", "p_value", "rmse", "rmse_pct", "bias"]
     print(res_df[show_cols].to_string(index=False,
                                       float_format=lambda v: f"{v:.4g}"))
     print("=" * 110)
@@ -149,7 +158,9 @@ def main() -> int:
             ax.scatter(x, yv, s=20, alpha=0.6)
             ax.plot(xs, ys, "r-", lw=1.5,
                     label=f"y={r.slope:.3g}·x+{r.intercept:.3g}\n"
-                          f"R²={r.r2:.3f}, p={r.p_value:.2g}, n={r.n}")
+                          f"R²={r.r2:.3f}, p={r.p_value:.2g}, n={r.n}\n"
+                          f"RMSE={r.rmse:.3g} ({r.rmse_pct:.1f}%), "
+                          f"bias={r.bias:.2g}")
             ax.set_xlabel(f"{r.source} (м³)")
             ax.set_ylabel(args.target)
             ax.set_title(f"{args.target} ~ {r.method} ({r.source})")
