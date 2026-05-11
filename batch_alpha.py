@@ -64,8 +64,7 @@ class BatchAlphaConfig:
     voxel_sizes_mm: list[float]
     auto_voxel: bool
     alphas: list[float]
-    layered: bool
-    layer_dz_mm: float
+    layer_dz_mm_list: list[float]
     with_random: bool
     units: str
     flip_z: bool
@@ -108,8 +107,13 @@ def build_tasks(item: InputItem, points: np.ndarray, cfg: BatchAlphaConfig
     if cfg.auto_voxel:
         sizes_mm.append(auto_voxel_mm(points))
 
+    layered = bool(cfg.layer_dz_mm_list)
+    # пустой список dz → одна 3D-итерация
+    dz_iter: list[float | None] = (list(cfg.layer_dz_mm_list)
+                                   if layered else [None])
+
     tasks = []
-    rows: dict[tuple[str, float, float], dict] = {}
+    rows: dict[tuple[str, float, float, object], dict] = {}
     for size_mm in sizes_mm:
         size_m = size_mm / 1000.0
         v_pts = voxel_downsample(points, size_m)
@@ -127,24 +131,26 @@ def build_tasks(item: InputItem, points: np.ndarray, cfg: BatchAlphaConfig
             n_r = None
 
         for a in cfg.alphas:
-            base = {
-                "file": item.rel_path, **item.labels,
-                "voxel_mm": size_mm, "n_voxel": n_v,
-                "alpha": a,
-                "mode": "layered" if cfg.layered else "3d",
-                "layer_dz_mm": cfg.layer_dz_mm if cfg.layered else "",
-                "V_voxel": "",
-                "error": "",
-            }
-            if cfg.with_random:
-                base["n_random"] = n_r
-                base["V_random"] = ""
-            key = (item.rel_path, size_mm, a)
-            rows[key] = base
-            dz_m = cfg.layer_dz_mm / 1000.0
-            tasks.append(((key, "voxel"), v_pts, a, cfg.layered, dz_m))
-            if cfg.with_random:
-                tasks.append(((key, "random"), r_pts, a, cfg.layered, dz_m))
+            for dz_mm in dz_iter:
+                base = {
+                    "file": item.rel_path, **item.labels,
+                    "voxel_mm": size_mm, "n_voxel": n_v,
+                    "alpha": a,
+                    "mode": "layered" if layered else "3d",
+                    "layer_dz_mm": dz_mm if layered else "",
+                    "V_voxel": "",
+                    "error": "",
+                }
+                if cfg.with_random:
+                    base["n_random"] = n_r
+                    base["V_random"] = ""
+                key = (item.rel_path, size_mm, a,
+                       dz_mm if layered else "")
+                rows[key] = base
+                dz_m = (dz_mm / 1000.0) if layered else 0.0
+                tasks.append(((key, "voxel"), v_pts, a, layered, dz_m))
+                if cfg.with_random:
+                    tasks.append(((key, "random"), r_pts, a, layered, dz_m))
     return tasks, rows
 
 
@@ -175,10 +181,10 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
                    help="Добавить размер = среднее nn-расстояние (на каждое облако)")
     p.add_argument("--alphas", default="10,20",
                    help="Значения α через запятую (default: 10,20)")
-    p.add_argument("--layered", action="store_true",
-                   help="Послойный объём (2D × dz)")
-    p.add_argument("--layer-dz", type=float, default=20.0,
-                   help="Толщина слоя в мм (default: 20)")
+    p.add_argument("--layer-dz", default=None,
+                   help="Толщина слоя в мм через запятую (напр. 10,20,40). "
+                        "Если передан — режим layered; иначе обычный 3D "
+                        "alpha-shape.")
     p.add_argument("--with-random", action="store_true",
                    help="Дополнительно считать random downsample той же N "
                         "(колонки n_random, V_random)")
@@ -215,6 +221,10 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
     if not voxel_sizes and not a.auto:
         p.error("Нужен --voxel-sizes или --auto")
 
+    layer_dz_list = ([float(x) for x in a.layer_dz.split(",") if x.strip()]
+                     if a.layer_dz else [])
+    layered = bool(layer_dz_list)
+
     if a.output_csv is None:
         extra: dict = {}
         if abs(a.sor_std_ratio - 2.0) > 1e-9:
@@ -229,8 +239,8 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
             voxels_mm=voxel_sizes,
             auto_voxel=a.auto,
             alphas=alphas,
-            layered=a.layered,
-            layer_dz_mm=a.layer_dz if a.layered else None,
+            layered=layered,
+            layer_dz_mm=layer_dz_list if layered else None,
             extra=extra,
         )
         output_csv = default_path("volume_alpha", name, ".csv")
@@ -242,7 +252,7 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
         base_dir=Path(a.base_dir), output_csv=output_csv,
         voxel_sizes_mm=voxel_sizes, auto_voxel=a.auto,
         alphas=alphas,
-        layered=a.layered, layer_dz_mm=a.layer_dz,
+        layer_dz_mm_list=layer_dz_list,
         with_random=a.with_random,
         units=a.units, flip_z=a.flip_z,
         sor_neighbors=a.sor_neighbors,
@@ -254,8 +264,9 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
 
 
 def _row_key(row: dict) -> str:
-    """Строковый ключ строки CSV для resume (file|voxel_mm|alpha)."""
-    return f"{row['file']}|{row['voxel_mm']}|{row['alpha']}"
+    """Строковый ключ строки CSV для resume (file|voxel_mm|alpha|dz)."""
+    return (f"{row['file']}|{row['voxel_mm']}|{row['alpha']}|"
+            f"{row.get('layer_dz_mm', '')}")
 
 
 def load_done_keys(csv_path: Path) -> set[str]:

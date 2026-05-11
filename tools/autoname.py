@@ -56,7 +56,7 @@ def build_name(
     auto_voxel: bool = False,
     alphas: Iterable | None = None,
     layered: bool = False,
-    layer_dz_mm: float | None = None,
+    layer_dz_mm: float | Iterable[float] | None = None,
     cell_sizes_mm: Iterable | None = None,
     percentiles: Iterable | None = None,
     extra: dict | None = None,
@@ -85,7 +85,12 @@ def build_name(
     if layered:
         parts.append("layered")
         if layer_dz_mm is not None:
-            parts.append(f"dz{_fmt_num(layer_dz_mm)}")
+            if isinstance(layer_dz_mm, (int, float)):
+                dz_vals = [layer_dz_mm]
+            else:
+                dz_vals = list(layer_dz_mm)
+            if dz_vals:
+                parts.append("dz" + "_".join(_fmt_num(v) for v in dz_vals))
 
     c_tok = _list_token("c", list(cell_sizes_mm) if cell_sizes_mm else [])
     if c_tok:
