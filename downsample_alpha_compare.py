@@ -57,22 +57,19 @@ def _polygon_rings(geom):
     return rings
 
 
-def _alpha_2d_area_fast(xy: np.ndarray, alpha: float) -> float:
-    """Площадь 2D alpha-shape через прямую сумму треугольников Delaunay
-    (circumradius < 1/alpha). Дырки внутри корректно вычитаются (в отличие
-    от alphashape lib + polygonize, которая их игнорирует).
+def _layer_triangles(xy: np.ndarray):
+    """Delaunay-тесселяция XY-слоя + (area, circumradius) на треугольник.
+
+    Возвращает (area, circ) — массивы по числу треугольников; либо (None, None)
+    если слой вырожден / Qhull упал. Кэшируется снаружи: на одну тесселяцию
+    можно потом много раз фильтровать по разным α (circ < 1/α).
     """
     if len(xy) < 3:
-        return 0.0
-    if alpha <= 0:
-        try:
-            return float(Delaunay(xy).convex_hull.size and 0.0)
-        except QhullError:
-            return 0.0
+        return None, None
     try:
         tri = Delaunay(xy)
     except QhullError:
-        return 0.0
+        return None, None
     s = tri.simplices
     pa, pb, pc = xy[s[:, 0]], xy[s[:, 1]], xy[s[:, 2]]
     a = np.linalg.norm(pb - pc, axis=1)
@@ -82,8 +79,20 @@ def _alpha_2d_area_fast(xy: np.ndarray, alpha: float) -> float:
     area = np.sqrt(np.maximum(sp * (sp - a) * (sp - b) * (sp - c), 0.0))
     with np.errstate(divide="ignore", invalid="ignore"):
         circ = np.where(area > 0, (a * b * c) / (4.0 * area), np.inf)
-    keep = circ < (1.0 / alpha)
-    return float(area[keep].sum())
+    return area, circ
+
+
+def _alpha_2d_area_fast(xy: np.ndarray, alpha: float) -> float:
+    """Площадь 2D alpha-shape (circumradius < 1/alpha). Тонкая обёртка над
+    _layer_triangles — оставлена для совместимости с интерактивным
+    make_figure-режимом (один α за раз).
+    """
+    if alpha <= 0:
+        return 0.0
+    area, circ = _layer_triangles(xy)
+    if area is None:
+        return 0.0
+    return float(area[circ < (1.0 / alpha)].sum())
 
 
 def alpha_layered(points: np.ndarray, alpha: float, dz: float,
@@ -128,18 +137,73 @@ def alpha_layered(points: np.ndarray, alpha: float, dz: float,
     return layers, total
 
 
+def alpha_layered_multi(points: np.ndarray, alphas: list[float],
+                        dz: float) -> dict[float, float]:
+    """Послойный объём сразу для набора α: один Delaunay на слой,
+    цикл по α на готовой маске circ < 1/α.
+
+    Эквивалентен `alpha_layered(..., with_rings=False)` для каждого α,
+    но дешевле в N_alpha раз (Delaunay доминирует). Возвращает
+    {alpha: total_volume}.
+    """
+    out = {a: 0.0 for a in alphas}
+    if len(points) < 3 or dz <= 0:
+        return out
+    z = points[:, 2]
+    z_min, z_max = float(z.min()), float(z.max())
+    if z_max - z_min <= 0:
+        return out
+
+    edges = np.arange(z_min, z_max + dz, dz)
+    order = np.argsort(z, kind="stable")
+    z_sorted = z[order]
+    pts_sorted = points[order]
+    bounds = np.searchsorted(z_sorted, edges)
+
+    inv_alphas = [(a, 1.0 / a) for a in alphas if a > 0]
+    for i, (z0, z1) in enumerate(zip(edges[:-1], edges[1:])):
+        lo, hi = int(bounds[i]), int(bounds[i + 1])
+        if hi - lo < 3:
+            continue
+        layer_xy = pts_sorted[lo:hi, :2]
+        area, circ = _layer_triangles(layer_xy)
+        if area is None:
+            continue
+        thickness = z1 - z0
+        for a, inv_a in inv_alphas:
+            s = float(area[circ < inv_a].sum())
+            if s > 0:
+                out[a] += s * thickness
+    return out
+
+
 def _compute_one(task):
     """Воркер для пула процессов.
 
-    task: (idx, points, alpha, layered, dz) или
-          (idx, points, alpha, layered, dz, with_rings)
-    return: (idx, kind, payload, volume)
+    Принимает либо одиночный α (старая сигнатура, для make_figure):
+        (idx, points, alpha, layered, dz)
+        (idx, points, alpha, layered, dz, with_rings)
+    либо список α (batch-режим):
+        (idx, points, [alphas], layered, dz)
+
+    return:
+        для одиночного α: (idx, kind, payload, volume)
+        для списка α    : (idx, "layers_multi", None, {α: volume})  — только layered
     """
     if len(task) == 6:
         idx, points, alpha, layered, dz, with_rings = task
     else:
         idx, points, alpha, layered, dz = task
         with_rings = False
+
+    # batch-ветка: alpha — список/кортеж
+    if isinstance(alpha, (list, tuple)):
+        if not layered:
+            raise ValueError(
+                "multi-alpha _compute_one поддерживает только layered-режим")
+        vols = alpha_layered_multi(points, list(alpha), dz)
+        return idx, "layers_multi", None, vols
+
     if layered:
         layers, vol = alpha_layered(points, alpha, dz, with_rings=with_rings)
         return idx, "layers", layers, vol

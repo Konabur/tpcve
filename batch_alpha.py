@@ -98,19 +98,25 @@ def auto_voxel_mm(points: np.ndarray) -> float:
     return float(nn.mean()) * 1000
 
 
-def build_tasks(item: InputItem, points: np.ndarray, cfg: BatchAlphaConfig
-                ) -> tuple[list[tuple], list[dict]]:
-    """Возвращает (tasks_for_pool, row_skeletons).
+def build_tasks(item: InputItem, points: np.ndarray, cfg: BatchAlphaConfig,
+                done_keys: set[str] | None = None
+                ) -> tuple[list[tuple], dict]:
+    """Возвращает (tasks_for_pool, rows).
 
-    tasks: список (idx, points, alpha, layered, dz_m); idx = (rel_path, voxel_mm, alpha, kind)
-    row_skeletons: список dict с предзаполненными мета-полями, ключи как у idx до alpha+kind.
+    В layered-режиме таски укрупнены: один таск на (size, dz, kind) с полным
+    списком α (Delaunay-кэш на стороне воркера). idx таска = (group_key, kind),
+    group_key = (rel_path, size_mm, dz_mm); воркер возвращает {α: volume}.
+    В non-layered режиме поведение прежнее — таск на каждый α.
+
+    rows ключуются по (rel_path, size_mm, α, dz) как раньше (формат CSV).
+    Если done_keys передан — уже завершённые строки в rows/задачи не попадают.
     """
+    done_keys = done_keys or set()
     sizes_mm = list(cfg.voxel_sizes_mm)
     if cfg.auto_voxel:
         sizes_mm.append(auto_voxel_mm(points))
 
     layered = bool(cfg.layer_dz_mm_list)
-    # пустой список dz → одна 3D-итерация
     dz_iter: list[float | None] = (list(cfg.layer_dz_mm_list)
                                    if layered else [None])
 
@@ -132,27 +138,48 @@ def build_tasks(item: InputItem, points: np.ndarray, cfg: BatchAlphaConfig
             r_pts = None
             n_r = None
 
-        for a in cfg.alphas:
-            for dz_mm in dz_iter:
+        for dz_mm in dz_iter:
+            dz_label = dz_mm if layered else ""
+            dz_m = (dz_mm / 1000.0) if layered else 0.0
+
+            pending_alphas = []
+            for a in cfg.alphas:
+                key = (item.rel_path, size_mm, a, dz_label)
+                row_key_str = (f"{item.rel_path}|{size_mm}|{a}|"
+                               f"{dz_label}")
+                if row_key_str in done_keys:
+                    continue
                 base = {
                     "file": item.rel_path, **item.labels,
                     "voxel_mm": size_mm, "n_voxel": n_v,
                     "alpha": a,
                     "mode": "layered" if layered else "3d",
-                    "layer_dz_mm": dz_mm if layered else "",
+                    "layer_dz_mm": dz_label,
                     "V_voxel": "",
                     "error": "",
                 }
                 if cfg.with_random:
                     base["n_random"] = n_r
                     base["V_random"] = ""
-                key = (item.rel_path, size_mm, a,
-                       dz_mm if layered else "")
                 rows[key] = base
-                dz_m = (dz_mm / 1000.0) if layered else 0.0
-                tasks.append(((key, "voxel"), v_pts, a, layered, dz_m))
+                pending_alphas.append(a)
+
+            if not pending_alphas:
+                continue
+
+            if layered:
+                group_idx = (item.rel_path, size_mm, dz_label)
+                tasks.append(((group_idx, "voxel"),
+                              v_pts, pending_alphas, True, dz_m))
                 if cfg.with_random:
-                    tasks.append(((key, "random"), r_pts, a, layered, dz_m))
+                    tasks.append(((group_idx, "random"),
+                                  r_pts, pending_alphas, True, dz_m))
+            else:
+                for a in pending_alphas:
+                    key = (item.rel_path, size_mm, a, dz_label)
+                    tasks.append(((key, "voxel"), v_pts, a, False, dz_m))
+                    if cfg.with_random:
+                        tasks.append(((key, "random"), r_pts, a, False, dz_m))
     return tasks, rows
 
 
@@ -341,7 +368,8 @@ def process_batch(cfg: BatchAlphaConfig, *,
                         f.flush()
                         n_err += 1
                         continue
-                    tasks, rows = build_tasks(item, pts, cfg)
+                    tasks, rows = build_tasks(item, pts, cfg,
+                                              done_keys=done_keys)
                 except Exception as e:
                     writer.writerow({"file": item.rel_path, **item.labels,
                                      "error": f"{type(e).__name__}: {e}"})
@@ -349,25 +377,50 @@ def process_batch(cfg: BatchAlphaConfig, *,
                     n_err += 1
                     continue
 
-                # фильтр resume
-                if done_keys:
-                    keep_keys = {k for k in rows
-                                 if _row_key(rows[k]) not in done_keys}
-                    tasks = [t for t in tasks if t[0][0] in keep_keys]
-                    rows = {k: v for k, v in rows.items() if k in keep_keys}
                 if not tasks:
                     continue
 
-                # параллельный compute alpha-shape
+                def _apply_result(idx_payload, vol_or_dict):
+                    """Разложить результат таска в rows.
+
+                    idx_payload = (key_or_group, kind). Если 4-элементный
+                    key — это одиночный α; если 3-элементный — группа,
+                    vol_or_dict — {α: volume}.
+                    """
+                    key_or_group, kind = idx_payload
+                    col = "V_voxel" if kind == "voxel" else "V_random"
+                    if len(key_or_group) == 4:
+                        rows[key_or_group][col] = vol_or_dict
+                        return
+                    rel, size_mm, dz_label = key_or_group
+                    for a, vol in vol_or_dict.items():
+                        row_key = (rel, size_mm, a, dz_label)
+                        if row_key in rows:
+                            rows[row_key][col] = vol
+
+                def _apply_error(idx_payload, err_msg):
+                    key_or_group, _ = idx_payload
+                    if len(key_or_group) == 4:
+                        rows[key_or_group]["error"] = err_msg
+                        return
+                    rel, size_mm, dz_label = key_or_group
+                    for a in cfg.alphas:
+                        row_key = (rel, size_mm, a, dz_label)
+                        if row_key in rows:
+                            rows[row_key]["error"] = err_msg
+
                 inner = tqdm(total=len(tasks), unit="task",
                              leave=False, dynamic_ncols=True,
                              desc=f"  α-shape ({item.rel_path[-25:]})")
                 if ex is None:
                     for task in tasks:
-                        (key, kind), _pts, _a, _l, _dz = task
-                        idx, _, _, vol = _compute_one(task)
-                        col = "V_voxel" if kind == "voxel" else "V_random"
-                        rows[key][col] = vol
+                        try:
+                            _idx, _kind, _payload, vol = _compute_one(task)
+                        except Exception as e:
+                            _apply_error(task[0], f"{type(e).__name__}: {e}")
+                            inner.update(1)
+                            continue
+                        _apply_result(task[0], vol)
                         inner.update(1)
                 else:
                     futs = {ex.submit(_compute_one, t): t[0] for t in tasks}
@@ -375,13 +428,10 @@ def process_batch(cfg: BatchAlphaConfig, *,
                         try:
                             _idx, _kind, _payload, vol = fut.result()
                         except Exception as e:
-                            key, kind = futs[fut]
-                            rows[key]["error"] = f"{type(e).__name__}: {e}"
+                            _apply_error(futs[fut], f"{type(e).__name__}: {e}")
                             inner.update(1)
                             continue
-                        key, kind = futs[fut]
-                        col = "V_voxel" if kind == "voxel" else "V_random"
-                        rows[key][col] = vol
+                        _apply_result(futs[fut], vol)
                         inner.update(1)
                 inner.close()
 
