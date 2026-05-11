@@ -1631,6 +1631,7 @@ dependencies = [
     { name = "open3d" },
     { name = "python-dotenv" },
     { name = "rosbags" },
+    { name = "scikit-learn" },
     { name = "scipy" },
 ]
 
@@ -1642,6 +1643,7 @@ requires-dist = [
     { name = "open3d", specifier = ">=0.19.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "rosbags", specifier = ">=0.11.0" },
+    { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "scipy", specifier = ">=1.17.1" },
 ]
 

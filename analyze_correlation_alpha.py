@@ -1,8 +1,7 @@
-"""Линейная регрессия biomass ~ V для long-формата CSV из batch_alpha.py.
+"""Регрессия biomass ~ V для long-формата CSV из batch_alpha.py.
 
-Группирует строки по (voxel_mm, alpha, mode, layer_dz_mm) — каждая комбинация
-параметров считается отдельным «методом», в нём по всем файлам строится
-регрессия biomass ~ V_voxel (и V_random, если колонка есть).
+Группирует строки по (voxel_mm, alpha, mode, layer_dz_mm). Для каждой группы
+фитит linear / power / huber и выбирает лучшую модель по R².
 
 Использование:
     uv run python analyze_correlation_alpha.py results/batch_alpha.csv
@@ -16,42 +15,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from tools.autoname import default_path
+from tools.regression import fit_all, flatten_for_csv, plot_fits
 
 GROUP_COLS = ["voxel_mm", "alpha", "mode", "layer_dz_mm"]
-
-
-def fit(x: np.ndarray, y: np.ndarray) -> dict:
-    res = stats.linregress(x, y)
-    y_pred = res.slope * x + res.intercept
-    resid = y - y_pred
-    rmse = float(np.sqrt(np.mean(resid ** 2)))
-    y_mean = float(np.mean(y))
-    rmse_pct = rmse / y_mean * 100 if y_mean > 0 else float("nan")
-    bias = float(np.mean(resid))
-    return {
-        "n": len(x),
-        "slope": res.slope,
-        "intercept": res.intercept,
-        "r2": res.rvalue ** 2,
-        "r": res.rvalue,
-        "p_value": res.pvalue,
-        "stderr": res.stderr,
-        "rmse": rmse,
-        "rmse_pct": rmse_pct,
-        "bias": bias,
-    }
-
-
-def fit_group(group: pd.DataFrame, vol_col: str, target: str) -> dict | None:
-    s = pd.to_numeric(group[vol_col], errors="coerce")
-    y = pd.to_numeric(group[target], errors="coerce")
-    mask = s.notna() & y.notna() & (s > 0)
-    if mask.sum() < 3:
-        return None
-    return fit(s[mask].to_numpy(), y[mask].to_numpy())
 
 
 def label_for(row) -> str:
@@ -68,7 +36,7 @@ def main() -> int:
                    help="Куда сохранить CSV с результатами регрессии "
                         "(default: results/regression_csv/alpha/<stem>_regression.csv)")
     p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None,
-                   help="Если указано — сохранить scatter+линию для каждой группы. "
+                   help="Если указано — сохранить scatter+линии для каждой группы. "
                         "Без значения: results/regression_plots/alpha/<stem>/")
     p.add_argument("--top", type=int, default=None)
     p.add_argument("--source", choices=["voxel", "random", "both"],
@@ -91,35 +59,49 @@ def main() -> int:
     sources = [c for c in sources if c in df.columns]
 
     rows = []
+    fit_cache: dict[tuple, dict] = {}
     for keys, grp in df.groupby(GROUP_COLS, dropna=False):
         meta = dict(zip(GROUP_COLS, keys))
         for vc in sources:
-            res = fit_group(grp, vc, args.target)
-            if res is None:
+            s = pd.to_numeric(grp[vc], errors="coerce")
+            y = pd.to_numeric(grp[args.target], errors="coerce")
+            mask = s.notna() & y.notna() & (s > 0)
+            if mask.sum() < 3:
                 continue
+            x_arr = s[mask].to_numpy()
+            y_arr = y[mask].to_numpy()
+            result = fit_all(x_arr, y_arr)
+            if result is None:
+                continue
+            method = label_for(meta)
+            fit_cache[(method, vc)] = result
             rows.append({
-                "method": label_for(meta),
+                "method": method,
                 "source": vc,
                 **meta,
-                **res,
+                **flatten_for_csv(result),
             })
 
     if not rows:
         raise SystemExit("Нет валидных данных для регрессии")
 
-    res_df = (pd.DataFrame(rows)
-              .sort_values("r2", ascending=False)
+    res_df = pd.DataFrame(rows)
+    res_df["_max_r2"] = res_df[["linear_r2", "power_r2", "huber_r2"]].max(axis=1)
+    res_df = (res_df.sort_values("_max_r2", ascending=False)
+              .drop(columns="_max_r2")
               .reset_index(drop=True))
     if args.top:
         res_df = res_df.head(args.top)
 
     print(f"\nЦель: {args.target} ~ V   (групп: {len(res_df)})")
-    print("=" * 110)
-    show_cols = ["method", "source", "n", "slope", "intercept",
-                 "r", "r2", "p_value", "rmse", "rmse_pct", "bias"]
+    print("=" * 140)
+    show_cols = ["method", "source", "best_model",
+                 "linear_r2", "linear_rmse_pct",
+                 "power_r2",  "power_rmse_pct",  "power_b",
+                 "huber_r2",  "huber_rmse_pct"]
     print(res_df[show_cols].to_string(index=False,
                                       float_format=lambda v: f"{v:.4g}"))
-    print("=" * 110)
+    print("=" * 140)
 
     stem = Path(args.csv).stem
     if args.output:
@@ -141,6 +123,9 @@ def main() -> int:
             out = Path(args.plots_dir)
         out.mkdir(parents=True, exist_ok=True)
         for r in res_df.itertuples():
+            result = fit_cache.get((r.method, r.source))
+            if result is None:
+                continue
             grp = df[(df["voxel_mm"] == r.voxel_mm)
                      & (df["alpha"] == r.alpha)
                      & (df["mode"] == r.mode)
@@ -151,21 +136,11 @@ def main() -> int:
             x = s[mask].to_numpy()
             yv = y[mask].to_numpy()
 
-            xs = np.linspace(x.min(), x.max(), 100)
-            ys = r.slope * xs + r.intercept
-
-            fig, ax = plt.subplots(figsize=(6, 4.5))
-            ax.scatter(x, yv, s=20, alpha=0.6)
-            ax.plot(xs, ys, "r-", lw=1.5,
-                    label=f"y={r.slope:.3g}·x+{r.intercept:.3g}\n"
-                          f"R²={r.r2:.3f}, p={r.p_value:.2g}, n={r.n}\n"
-                          f"RMSE={r.rmse:.3g} ({r.rmse_pct:.1f}%), "
-                          f"bias={r.bias:.2g}")
-            ax.set_xlabel(f"{r.source} (м³)")
-            ax.set_ylabel(args.target)
-            ax.set_title(f"{args.target} ~ {r.method} ({r.source})")
-            ax.legend(loc="best", fontsize=9)
-            ax.grid(alpha=0.3)
+            fig, ax = plt.subplots(figsize=(6.5, 4.8))
+            plot_fits(ax, x, yv, result,
+                      xlabel=f"{r.source} (м³)",
+                      ylabel=args.target,
+                      title=f"{args.target} ~ {r.method} ({r.source})")
             fig.tight_layout()
             fname = f"{r.method}__{r.source}.png".replace("/", "_")
             fig.savefig(out / fname, dpi=130)

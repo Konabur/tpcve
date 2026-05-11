@@ -1,4 +1,6 @@
-"""Линейная регрессия biomass ~ volume для каждой колонки-метода в CSV.
+"""Регрессия biomass ~ volume для каждой колонки-метода в CSV.
+
+Фитит linear / power / huber и для каждого метода выбирает лучшую по R².
 
 Использование:
     uv run python analyze_correlation.py results/batch.csv
@@ -11,34 +13,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from tools.autoname import default_path
+from tools.regression import fit_all, flatten_for_csv, plot_fits
 
 NON_METHOD_COLS = {"file", "biomass", "col3", "col4", "col5",
                    "n_input", "n_after_sor", "n_vegetation", "error"}
-
-
-def fit_column(x: np.ndarray, y: np.ndarray) -> dict:
-    res = stats.linregress(x, y)
-    y_pred = res.slope * x + res.intercept
-    resid = y - y_pred
-    rmse = float(np.sqrt(np.mean(resid ** 2)))
-    y_mean = float(np.mean(y))
-    rmse_pct = rmse / y_mean * 100 if y_mean > 0 else float("nan")
-    bias = float(np.mean(resid))
-    return {
-        "n": len(x),
-        "slope": res.slope,
-        "intercept": res.intercept,
-        "r2": res.rvalue ** 2,
-        "r": res.rvalue,
-        "p_value": res.pvalue,
-        "stderr": res.stderr,
-        "rmse": rmse,
-        "rmse_pct": rmse_pct,
-        "bias": bias,
-    }
 
 
 def main() -> int:
@@ -48,7 +28,7 @@ def main() -> int:
                    help="Куда сохранить CSV с результатами регрессии "
                         "(default: results/regression_csv/voxel/<stem>_regression.csv)")
     p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None,
-                   help="Если указано — сохранить scatter+линию для каждого метода. "
+                   help="Если указано — сохранить scatter+линии для каждого метода. "
                         "Без значения: results/regression_plots/voxel/<stem>/")
     p.add_argument("--target", default="biomass",
                    help="Целевая колонка (default: biomass)")
@@ -64,6 +44,7 @@ def main() -> int:
     df[args.target] = pd.to_numeric(df[args.target], errors="coerce")
 
     rows = []
+    fit_cache: dict[str, dict] = {}
     for col in method_cols:
         s = pd.to_numeric(df[col], errors="coerce")
         mask = s.notna() & df[args.target].notna() & (s > 0)
@@ -71,19 +52,29 @@ def main() -> int:
             continue
         x = s[mask].to_numpy()
         y = df.loc[mask, args.target].to_numpy()
-        rows.append({"method": col, **fit_column(x, y)})
+        result = fit_all(x, y)
+        if result is None:
+            continue
+        fit_cache[col] = result
+        rows.append({"method": col, **flatten_for_csv(result)})
 
     if not rows:
         raise SystemExit("Нет валидных данных для регрессии")
 
-    res = pd.DataFrame(rows).sort_values("r2", ascending=False).reset_index(drop=True)
+    res = pd.DataFrame(rows)
+    res["_max_r2"] = res[["linear_r2", "power_r2", "huber_r2"]].max(axis=1)
+    res = res.sort_values("_max_r2", ascending=False).drop(columns="_max_r2").reset_index(drop=True)
     if args.top:
         res = res.head(args.top)
 
     print(f"\nЦель: {args.target} ~ volume   (всего методов: {len(res)})")
-    print("=" * 90)
-    print(res.to_string(index=False, float_format=lambda v: f"{v:.4g}"))
-    print("=" * 90)
+    print("=" * 130)
+    show_cols = ["method", "best_model",
+                 "linear_r2", "linear_rmse_pct",
+                 "power_r2",  "power_rmse_pct",  "power_b",
+                 "huber_r2",  "huber_rmse_pct"]
+    print(res[show_cols].to_string(index=False, float_format=lambda v: f"{v:.4g}"))
+    print("=" * 130)
 
     stem = Path(args.csv).stem
     if args.output:
@@ -106,26 +97,19 @@ def main() -> int:
         out.mkdir(parents=True, exist_ok=True)
         for r in res.itertuples():
             col = r.method
+            result = fit_cache.get(col)
+            if result is None:
+                continue
             s = pd.to_numeric(df[col], errors="coerce")
             mask = s.notna() & df[args.target].notna() & (s > 0)
             x = s[mask].to_numpy()
             y = df.loc[mask, args.target].to_numpy()
 
-            xs = np.linspace(x.min(), x.max(), 100)
-            ys = r.slope * xs + r.intercept
-
-            fig, ax = plt.subplots(figsize=(6, 4.5))
-            ax.scatter(x, y, s=20, alpha=0.6)
-            ax.plot(xs, ys, "r-", lw=1.5,
-                    label=f"y={r.slope:.3g}·x+{r.intercept:.3g}\n"
-                          f"R²={r.r2:.3f}, p={r.p_value:.2g}, n={r.n}\n"
-                          f"RMSE={r.rmse:.3g} ({r.rmse_pct:.1f}%), "
-                          f"bias={r.bias:.2g}")
-            ax.set_xlabel(f"{col} (м³)")
-            ax.set_ylabel(args.target)
-            ax.set_title(f"{args.target} ~ {col}")
-            ax.legend(loc="best", fontsize=9)
-            ax.grid(alpha=0.3)
+            fig, ax = plt.subplots(figsize=(6.5, 4.8))
+            plot_fits(ax, x, y, result,
+                      xlabel=f"{col} (м³)",
+                      ylabel=args.target,
+                      title=f"{args.target} ~ {col}")
             fig.tight_layout()
             fig.savefig(out / f"{col}.png", dpi=130)
             plt.close(fig)
