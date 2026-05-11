@@ -74,6 +74,8 @@ class BatchAlphaConfig:
     workers: int
     resume: bool
     limit: int | None
+    list_test: str | None = None
+    output_csv_test: Path | None = None
     analyze: bool = True
     plots: bool = True
 
@@ -168,6 +170,9 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--list", dest="list_file")
     src.add_argument("--input-dir")
+    p.add_argument("--list-test", default=None,
+                   help="Опциональный второй --list-файл для теста (held-out); "
+                        "пишется в <output>_test.csv той же структуры.")
     p.add_argument("--base-dir",
                    default=os.getenv("TPCVE_BASE_DIR", "data"),
                    help="База для путей из --list "
@@ -247,6 +252,10 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
     else:
         output_csv = Path(a.output_csv)
 
+    output_csv_test = (output_csv.with_name(output_csv.stem + "_test"
+                                          + output_csv.suffix)
+                      if a.list_test else None)
+
     return BatchAlphaConfig(
         list_file=a.list_file, input_dir=a.input_dir,
         base_dir=Path(a.base_dir), output_csv=output_csv,
@@ -259,6 +268,7 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
         sor_std_ratio=a.sor_std_ratio,
         seed=a.seed, workers=a.workers,
         resume=a.resume, limit=a.limit,
+        list_test=a.list_test, output_csv_test=output_csv_test,
         analyze=a.analyze, plots=a.plots,
     )
 
@@ -277,19 +287,28 @@ def load_done_keys(csv_path: Path) -> set[str]:
         return {_row_key(row) for row in reader if row.get("file")}
 
 
-def process_batch(cfg: BatchAlphaConfig) -> int:
-    # collect_inputs использует поля list_file/input_dir/base_dir/limit;
-    # подменяем интерфейс через ad-hoc namespace.
+def _collect(cfg: BatchAlphaConfig, list_file: str | None) -> list[InputItem]:
     items_cfg = type("X", (), {
-        "list_file": cfg.list_file, "input_dir": cfg.input_dir,
+        "list_file": list_file if list_file is not None else cfg.list_file,
+        "input_dir": None if list_file is not None else cfg.input_dir,
         "base_dir": cfg.base_dir, "limit": cfg.limit,
     })()
-    items = collect_inputs(items_cfg)
-    print(f"Файлов на входе: {len(items)}")
+    return collect_inputs(items_cfg)
 
-    cfg.output_csv.parent.mkdir(parents=True, exist_ok=True)
-    done_keys = load_done_keys(cfg.output_csv) if cfg.resume else set()
-    file_exists = cfg.output_csv.exists()
+
+def process_batch(cfg: BatchAlphaConfig, *,
+                  items: list[InputItem] | None = None,
+                  csv_path: Path | None = None,
+                  label: str = "train") -> int:
+    if items is None:
+        items = _collect(cfg, None)
+    if csv_path is None:
+        csv_path = cfg.output_csv
+    print(f"[{label}] файлов на входе: {len(items)} -> {csv_path}")
+
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    done_keys = load_done_keys(csv_path) if cfg.resume else set()
+    file_exists = csv_path.exists()
     mode = "a" if (cfg.resume and file_exists) else "w"
 
     ex = ProcessPoolExecutor(max_workers=cfg.workers) if cfg.workers > 1 else None
@@ -297,7 +316,7 @@ def process_batch(cfg: BatchAlphaConfig) -> int:
     n_done = 0
     n_err = 0
     try:
-        with open(cfg.output_csv, mode, encoding="utf-8", newline="") as f:
+        with open(csv_path, mode, encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=csv_columns(cfg.with_random),
                                     extrasaction="ignore")
             if mode == "w":
@@ -376,16 +395,23 @@ def process_batch(cfg: BatchAlphaConfig) -> int:
             ex.shutdown(wait=True)
 
     print(f"\nГотово за {time.time() - t0:.1f}s. Строк добавлено: {n_done} "
-          f"(ошибок файлов: {n_err}). CSV: {cfg.output_csv}")
+          f"(ошибок файлов: {n_err}). CSV: {csv_path}")
     return 0
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     cfg = parse_args(argv)
-    rc = process_batch(cfg)
+    rc = process_batch(cfg, csv_path=cfg.output_csv, label="train")
+    if cfg.list_test and cfg.output_csv_test is not None:
+        items_test = _collect(cfg, cfg.list_test)
+        process_batch(cfg, items=items_test,
+                      csv_path=cfg.output_csv_test, label="test")
     if cfg.analyze:
         import subprocess
-        cmd = [sys.executable, "analyze_correlation_alpha.py", str(cfg.output_csv)]
+        cmd = [sys.executable, "analyze_correlation_alpha.py",
+               str(cfg.output_csv)]
+        if cfg.output_csv_test is not None:
+            cmd += ["--test-csv", str(cfg.output_csv_test)]
         if cfg.plots:
             cmd.append("--plots-dir")
         print(f"\n>>> {' '.join(cmd)}")

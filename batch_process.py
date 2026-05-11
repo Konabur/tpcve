@@ -49,6 +49,8 @@ class BatchConfig:
     alphas: list[float]
     resume: bool
     limit: int | None
+    list_test: str | None = None
+    output_csv_test: Path | None = None
     analyze: bool = False
     plots: bool = False
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
@@ -72,18 +74,20 @@ def parse_list_line(line: str) -> tuple[str, dict]:
     }
 
 
-def collect_inputs(cfg: BatchConfig) -> list[InputItem]:
+def collect_inputs(cfg, *, list_file: str | None = None) -> list[InputItem]:
+    """list_file override позволяет переиспользовать конфиг для test-прохода."""
     items: list[InputItem] = []
+    src_list = list_file if list_file is not None else cfg.list_file
 
-    if cfg.list_file:
-        with open(cfg.list_file, encoding="utf-8") as f:
+    if src_list:
+        with open(src_list, encoding="utf-8") as f:
             for line in f:
                 if not line.strip() or line.lstrip().startswith("#"):
                     continue
                 rel, labels = parse_list_line(line)
                 full = cfg.base_dir / rel.lstrip("/\\")
                 items.append(InputItem(rel, full, labels))
-    elif cfg.input_dir:
+    elif cfg.input_dir and list_file is None:
         root = Path(cfg.input_dir)
         for f in sorted(root.rglob("*.pcd")):
             rel = str(f.relative_to(root))
@@ -152,6 +156,9 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchConfig:
                      help="Текстовый список 'path biomass c3 c4 c5'")
     src.add_argument("--input-dir",
                      help="Папка с .pcd (обходится рекурсивно)")
+    p.add_argument("--list-test", default=None,
+                   help="Опциональный второй --list-файл для теста (held-out); "
+                        "пишется в <output>_test.csv той же структуры.")
     p.add_argument("--base-dir",
                    default=os.getenv("TPCVE_BASE_DIR", "data"),
                    help="База для путей из --list "
@@ -229,6 +236,10 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchConfig:
     else:
         output_csv = Path(a.output_csv)
 
+    output_csv_test = (output_csv.with_name(output_csv.stem + "_test"
+                                          + output_csv.suffix)
+                      if a.list_test else None)
+
     return BatchConfig(
         list_file=a.list_file,
         input_dir=a.input_dir,
@@ -239,6 +250,8 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchConfig:
         alphas=alphas,
         resume=a.resume,
         limit=a.limit,
+        list_test=a.list_test,
+        output_csv_test=output_csv_test,
         analyze=a.analyze,
         plots=a.plots,
         preprocess=PreprocessConfig(
@@ -253,30 +266,22 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchConfig:
     )
 
 
-def main(argv: Iterable[str] | None = None) -> int:
-    cfg = parse_args(argv)
-
-    items = collect_inputs(cfg)
-    columns = build_columns(cfg)
-    cfg.output_csv.parent.mkdir(parents=True, exist_ok=True)
-
-    done = load_done_files(cfg.output_csv) if cfg.resume else set()
-    file_exists = cfg.output_csv.exists()
+def write_csv(items: list[InputItem], csv_path: Path, cfg: BatchConfig,
+              columns: list[str], label: str) -> None:
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    done = load_done_files(csv_path) if cfg.resume else set()
+    file_exists = csv_path.exists()
     mode = "a" if (cfg.resume and file_exists) else "w"
-
     pending = [it for it in items if it.rel_path not in done]
-    print(f"Всего входов: {len(items)}; к обработке: {len(pending)} "
-          f"(пропущено по resume: {len(items) - len(pending)})")
-    print(f"Методы: {cfg.methods} | колонок: {len(columns)} | CSV: {cfg.output_csv}")
-
+    print(f"[{label}] входов: {len(items)}; к обработке: {len(pending)} "
+          f"(пропущено по resume: {len(items) - len(pending)}) -> {csv_path}")
     t0 = time.time()
-    with open(cfg.output_csv, mode, encoding="utf-8", newline="") as f:
+    with open(csv_path, mode, encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
         if mode == "w":
             writer.writeheader()
             f.flush()
-
-        bar = tqdm(pending, unit="cloud", dynamic_ncols=True)
+        bar = tqdm(pending, unit="cloud", dynamic_ncols=True, desc=label)
         n_err = 0
         for item in bar:
             bar.set_postfix_str(item.rel_path[-40:], refresh=False)
@@ -285,14 +290,29 @@ def main(argv: Iterable[str] | None = None) -> int:
             f.flush()
             if row.get("error"):
                 n_err += 1
-                tqdm.write(f"ERR {item.rel_path}: {row['error']}")
+                tqdm.write(f"ERR [{label}] {item.rel_path}: {row['error']}")
             bar.set_postfix(err=n_err, refresh=False)
+    print(f"[{label}] готово за {time.time() - t0:.1f}s.")
 
-    print(f"\nГотово за {time.time() - t0:.1f}s. CSV: {cfg.output_csv}")
+
+def main(argv: Iterable[str] | None = None) -> int:
+    cfg = parse_args(argv)
+
+    columns = build_columns(cfg)
+    print(f"Методы: {cfg.methods} | колонок: {len(columns)}")
+
+    items = collect_inputs(cfg)
+    write_csv(items, cfg.output_csv, cfg, columns, "train")
+
+    if cfg.list_test and cfg.output_csv_test is not None:
+        items_test = collect_inputs(cfg, list_file=cfg.list_test)
+        write_csv(items_test, cfg.output_csv_test, cfg, columns, "test")
 
     if cfg.analyze:
         import subprocess
         cmd = [sys.executable, "analyze_correlation.py", str(cfg.output_csv)]
+        if cfg.output_csv_test is not None:
+            cmd += ["--test-csv", str(cfg.output_csv_test)]
         if cfg.plots:
             cmd.append("--plots-dir")
         print(f"\n>>> {' '.join(cmd)}")

@@ -14,7 +14,15 @@ from sklearn.linear_model import HuberRegressor
 ModelFit = dict
 
 
-def _metrics(y: np.ndarray, y_pred: np.ndarray) -> dict:
+def compute_metrics(y: np.ndarray, y_pred: np.ndarray) -> dict:
+    y = np.asarray(y, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    mask = np.isfinite(y) & np.isfinite(y_pred)
+    if mask.sum() == 0:
+        return {"rmse": float("nan"), "rmse_pct": float("nan"),
+                "bias": float("nan"), "r2": float("nan"), "n": 0}
+    y = y[mask]
+    y_pred = y_pred[mask]
     resid = y - y_pred
     rmse = float(np.sqrt(np.mean(resid ** 2)))
     y_mean = float(np.mean(y))
@@ -23,7 +31,14 @@ def _metrics(y: np.ndarray, y_pred: np.ndarray) -> dict:
     ss_res = float(np.sum(resid ** 2))
     ss_tot = float(np.sum((y - y_mean) ** 2))
     r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan")
-    return {"rmse": rmse, "rmse_pct": rmse_pct, "bias": bias, "r2": r2}
+    return {"rmse": rmse, "rmse_pct": rmse_pct, "bias": bias, "r2": r2,
+            "n": int(mask.sum())}
+
+
+def _metrics(y: np.ndarray, y_pred: np.ndarray) -> dict:
+    m = compute_metrics(y, y_pred)
+    return {"rmse": m["rmse"], "rmse_pct": m["rmse_pct"],
+            "bias": m["bias"], "r2": m["r2"]}
 
 
 def fit_linear(x: np.ndarray, y: np.ndarray) -> ModelFit | None:
@@ -172,12 +187,29 @@ _COLORS = {"linear": "#1f77b4", "power": "#2ca02c", "huber": "#ff7f0e"}
 
 
 def plot_fits(ax, x: np.ndarray, y: np.ndarray, result: dict,
-              xlabel: str, ylabel: str, title: str) -> None:
-    """Scatter + три кривые на одном Axes; лучшая выделена жирной линией."""
-    ax.scatter(x, y, s=20, alpha=0.6, color="#444")
+              xlabel: str, ylabel: str, title: str,
+              x_test: np.ndarray | None = None,
+              y_test: np.ndarray | None = None) -> None:
+    """Scatter + три кривые на одном Axes; лучшая выделена жирной линией.
+
+    Если переданы x_test/y_test — нарисовать их как test-scatter и дописать
+    test-R² в подписи моделей.
+    """
+    has_test = (x_test is not None and y_test is not None
+               and len(x_test) > 0 and len(y_test) > 0)
+    ax.scatter(x, y, s=20, alpha=0.6, color="#444", label="train")
+    if has_test:
+        ax.scatter(x_test, y_test, s=28, alpha=0.85,
+                   color="#d62728", marker="^", label="test")
     if x.size == 0:
         return
-    xs = np.linspace(float(np.min(x)), float(np.max(x)), 200)
+    x_max = float(np.max(x))
+    if has_test:
+        x_max = max(x_max, float(np.max(x_test)))
+    x_min = float(np.min(x))
+    if has_test:
+        x_min = min(x_min, float(np.min(x_test)))
+    xs = np.linspace(x_min, x_max, 200)
     best_name = result["best_model"]
     for name, f in result["all"].items():
         is_best = name == best_name
@@ -189,7 +221,12 @@ def plot_fits(ax, x: np.ndarray, y: np.ndarray, result: dict,
         else:
             eq = f"slope={f['slope']:.3g}, b0={f['intercept']:.3g}"
         label = (f"{name}{' *' if is_best else ''}: "
-                 f"R²={f['r2']:.3f}, RMSE%={f['rmse_pct']:.1f}\n  {eq}")
+                 f"R²={f['r2']:.3f}, RMSE%={f['rmse_pct']:.1f}")
+        if has_test:
+            vm = compute_metrics(np.asarray(y_test),
+                                 f["predict"](np.asarray(x_test)))
+            label += f"\n  test R²={vm['r2']:.3f}, RMSE%={vm['rmse_pct']:.1f}"
+        label += f"\n  {eq}"
         ax.plot(
             xs, ys,
             color=_COLORS[name],
@@ -199,6 +236,9 @@ def plot_fits(ax, x: np.ndarray, y: np.ndarray, result: dict,
         )
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.set_title(f"{title}  [best: {best_name}, n={result['best']['n']}]")
+    n_suffix = f", n={result['best']['n']}"
+    if has_test:
+        n_suffix += f", n_test={len(x_test)}"
+    ax.set_title(f"{title}  [best: {best_name}{n_suffix}]")
     ax.legend(loc="best", fontsize=8)
     ax.grid(alpha=0.3)
