@@ -17,7 +17,7 @@ import numpy as np
 import open3d as o3d
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from scipy.spatial import Delaunay
+from scipy.spatial import ConvexHull, Delaunay
 from scipy.spatial.qhull import QhullError
 from tqdm import tqdm
 
@@ -31,9 +31,19 @@ from tools.autoname import build_name, default_path
 
 
 def alpha_mesh(points: np.ndarray, alpha: float):
-    """Возвращает (vertices, faces, volume) или (None, None, 0.0)."""
+    """Возвращает (vertices, faces, volume) или (None, None, 0.0).
+
+    alpha == 0 → 3D convex hull (alphashape lib возвращает 2D-полигон
+    при α=0, поэтому используем scipy.ConvexHull напрямую).
+    """
     if len(points) < 4:
         return None, None, 0.0
+    if alpha <= 0:
+        try:
+            hull = ConvexHull(points)
+        except QhullError:
+            return None, None, 0.0
+        return points[hull.vertices], hull.simplices, float(hull.volume)
     shape = alphashape.alphashape(points, alpha)
     verts = getattr(shape, "vertices", None)
     faces = getattr(shape, "faces", None)
@@ -86,12 +96,16 @@ def _alpha_2d_area_fast(xy: np.ndarray, alpha: float) -> float:
     """Площадь 2D alpha-shape (circumradius < 1/alpha). Тонкая обёртка над
     _layer_triangles — оставлена для совместимости с интерактивным
     make_figure-режимом (один α за раз).
+
+    alpha == 0 трактуется как «без фильтра» — площадь 2D convex hull
+    (все треугольники Delaunay), что согласуется с поведением
+    `alphashape.alphashape(pts, 0)` в 3D.
     """
-    if alpha <= 0:
-        return 0.0
     area, circ = _layer_triangles(xy)
     if area is None:
         return 0.0
+    if alpha <= 0:
+        return float(area.sum())
     return float(area[circ < (1.0 / alpha)].sum())
 
 
@@ -160,7 +174,9 @@ def alpha_layered_multi(points: np.ndarray, alphas: list[float],
     pts_sorted = points[order]
     bounds = np.searchsorted(z_sorted, edges)
 
-    inv_alphas = [(a, 1.0 / a) for a in alphas if a > 0]
+    # alpha == 0 → площадь convex hull слоя (без фильтра по circumradius),
+    # согласовано с `alphashape.alphashape(pts, 0)` в 3D-режиме.
+    inv_alphas = [(a, (1.0 / a) if a > 0 else float("inf")) for a in alphas]
     for i, (z0, z1) in enumerate(zip(edges[:-1], edges[1:])):
         lo, hi = int(bounds[i]), int(bounds[i + 1])
         if hi - lo < 3:

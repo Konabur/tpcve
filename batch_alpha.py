@@ -110,7 +110,8 @@ def build_tasks(item: InputItem, points: np.ndarray, cfg: BatchAlphaConfig,
     rows: dict[tuple[str, float, float, object], dict] = {}
     for size_mm in sizes_mm:
         size_m = size_mm / 1000.0
-        v_pts = voxel_downsample(points, size_m)
+        # size_mm == 0 → baseline без voxel-downsample
+        v_pts = points if size_m <= 0 else voxel_downsample(points, size_m)
         if len(v_pts) == 0:
             continue
         n_v = len(v_pts)
