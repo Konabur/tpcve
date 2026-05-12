@@ -16,7 +16,7 @@ import csv
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
@@ -25,10 +25,8 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 
 from batch_process import LABEL_COLS, InputItem, collect_inputs
-from generate_cloud import load_real_cloud
+from cloud_pipeline import PreprocessConfig, preprocess_cloud
 from tools.autoname import build_name, default_path
-
-GROUND_HEIGHT_THRESHOLD_M = 0.04
 
 COLUMNS = [
     "file", *LABEL_COLS,
@@ -45,25 +43,13 @@ class BatchChmConfig:
     output_csv: Path
     cell_sizes_mm: list[float]
     percentiles: list[float]
-    units: str
-    flip_z: bool
     resume: bool
     limit: int | None
     list_test: str | None = None
     output_csv_test: Path | None = None
     analyze: bool = True
     plots: bool = True
-
-
-def load_and_normalize(path: Path, units: str, flip_z: bool) -> np.ndarray:
-    data = load_real_cloud(str(path), units=units, verbose=False)
-    pts = np.asarray(data["all_pts_noisy"]).copy()
-    if len(pts) == 0:
-        return pts
-    if flip_z:
-        pts[:, 2] = -pts[:, 2]
-    pts[:, 2] -= pts[:, 2].min()
-    return pts
+    preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
 
 
 def _bin_and_sort(points: np.ndarray, cell_size_m: float):
@@ -144,6 +130,17 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchChmConfig:
     p.add_argument("--flip-z", action="store_true",
                    default=os.getenv("TPCVE_FLIP_Z", "").lower()
                    in ("1", "true", "yes"))
+    p.add_argument("--downsample", type=float,
+                   default=float(os.getenv("TPCVE_DOWNSAMPLE", "0") or 0))
+    p.add_argument("--sor-neighbors", type=int, default=20)
+    p.add_argument("--sor-std-ratio", type=float,
+                   default=float(os.getenv("TPCVE_SOR_STD_RATIO", "2.0")),
+                   help="SOR std_ratio (default: 2.0)")
+    p.add_argument("--min-range", type=float,
+                   default=float(os.getenv("TPCVE_MIN_RANGE", "0") or 0))
+    p.add_argument("--height-threshold", type=float, default=0.04,
+                   help="Порог по Z для отделения земли от растительности (m)")
+    p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--resume", action="store_true")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--analyze", action=argparse.BooleanOptionalAction,
@@ -169,8 +166,14 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchChmConfig:
 
     if a.output_csv is None:
         extra: dict = {}
+        if abs(a.sor_std_ratio - 2.0) > 1e-9:
+            extra["sor"] = a.sor_std_ratio
         if a.flip_z:
             extra["flipz"] = True
+        if a.downsample > 0:
+            extra["ds"] = a.downsample
+        if a.min_range > 0:
+            extra["r"] = a.min_range
         name = build_name(
             source=a.list_file or a.input_dir,
             source_kind="list" if a.list_file else "dir",
@@ -190,10 +193,19 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchChmConfig:
         list_file=a.list_file, input_dir=a.input_dir,
         base_dir=Path(a.base_dir), output_csv=output_csv,
         cell_sizes_mm=cell_sizes, percentiles=percentiles,
-        units=a.units, flip_z=a.flip_z,
         resume=a.resume, limit=a.limit,
         list_test=a.list_test, output_csv_test=output_csv_test,
         analyze=a.analyze, plots=a.plots,
+        preprocess=PreprocessConfig(
+            units=a.units,
+            flip_z=a.flip_z,
+            downsample=a.downsample,
+            sor_std_ratio=a.sor_std_ratio,
+            sor_neighbors=a.sor_neighbors,
+            min_range=a.min_range,
+            height_threshold=a.height_threshold,
+            verbose=a.verbose,
+        ),
     )
 
 
@@ -252,21 +264,20 @@ def process_batch(cfg: BatchChmConfig, *, items: list | None = None,
                 continue
 
             try:
-                pts = load_and_normalize(item.full_path, cfg.units, cfg.flip_z)
+                res = preprocess_cloud(str(item.full_path), cfg.preprocess)
             except Exception as e:
                 writer.writerow({"file": item.rel_path, **item.labels,
                                  "error": f"{type(e).__name__}: {e}"})
                 f.flush()
                 n_err += 1
                 continue
-            if len(pts) == 0:
+            veg = res.vegetation
+            if len(veg) == 0:
                 writer.writerow({"file": item.rel_path, **item.labels,
                                  "error": "empty cloud"})
                 f.flush()
                 n_err += 1
                 continue
-
-            veg = pts[pts[:, 2] > GROUND_HEIGHT_THRESHOLD_M]
 
             for cell_mm in cfg.cell_sizes_mm:
                 cell_m = cell_mm / 1000.0

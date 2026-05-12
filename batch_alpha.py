@@ -32,9 +32,9 @@ from batch_process import (
     collect_inputs,
     load_done_files,
 )
+from cloud_pipeline import PreprocessConfig, preprocess_cloud
 from downsample_alpha_compare import _compute_one
-from downsample_compare import random_downsample, sor as apply_sor, voxel_downsample
-from generate_cloud import load_real_cloud
+from downsample_compare import random_downsample, voxel_downsample
 from tools.autoname import build_name, default_path
 
 
@@ -66,10 +66,6 @@ class BatchAlphaConfig:
     alphas: list[float]
     layer_dz_mm_list: list[float]
     with_random: bool
-    units: str
-    flip_z: bool
-    sor_neighbors: int
-    sor_std_ratio: float
     seed: int
     workers: int
     resume: bool
@@ -78,17 +74,7 @@ class BatchAlphaConfig:
     output_csv_test: Path | None = None
     analyze: bool = True
     plots: bool = True
-
-
-def load_and_normalize(path: Path, units: str, flip_z: bool) -> np.ndarray:
-    data = load_real_cloud(str(path), units=units, verbose=False)
-    pts = np.asarray(data["all_pts_noisy"]).copy()
-    if len(pts) == 0:
-        return pts
-    if flip_z:
-        pts[:, 2] = -pts[:, 2]
-    pts[:, 2] -= pts[:, 2].min()
-    return pts
+    preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
 
 
 def auto_voxel_mm(points: np.ndarray) -> float:
@@ -127,12 +113,10 @@ def build_tasks(item: InputItem, points: np.ndarray, cfg: BatchAlphaConfig,
         v_pts = voxel_downsample(points, size_m)
         if len(v_pts) == 0:
             continue
-        v_pts = apply_sor(v_pts, cfg.sor_neighbors, cfg.sor_std_ratio)
         n_v = len(v_pts)
 
         if cfg.with_random:
             r_pts = random_downsample(points, n_v, cfg.seed)
-            r_pts = apply_sor(r_pts, cfg.sor_neighbors, cfg.sor_std_ratio)
             n_r = len(r_pts)
         else:
             r_pts = None
@@ -229,6 +213,14 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
     p.add_argument("--sor-std-ratio", type=float,
                    default=float(os.getenv("TPCVE_SOR_STD_RATIO", "2.0")),
                    help="SOR std_ratio (default: 2.0)")
+    p.add_argument("--downsample", type=float,
+                   default=float(os.getenv("TPCVE_DOWNSAMPLE", "0") or 0),
+                   help="Voxel downsample (m) применяется ДО SOR в препроцессе.")
+    p.add_argument("--min-range", type=float,
+                   default=float(os.getenv("TPCVE_MIN_RANGE", "0") or 0))
+    p.add_argument("--height-threshold", type=float, default=0.04,
+                   help="Порог по Z для отделения земли от растительности (m)")
+    p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--workers", type=int,
                    default=max(1, (os.cpu_count() or 2) // 2))
@@ -263,6 +255,10 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
             extra["sor"] = a.sor_std_ratio
         if a.flip_z:
             extra["flipz"] = True
+        if a.downsample > 0:
+            extra["ds"] = a.downsample
+        if a.min_range > 0:
+            extra["r"] = a.min_range
         if a.with_random:
             extra["rand"] = True
         name = build_name(
@@ -290,13 +286,20 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchAlphaConfig:
         alphas=alphas,
         layer_dz_mm_list=layer_dz_list,
         with_random=a.with_random,
-        units=a.units, flip_z=a.flip_z,
-        sor_neighbors=a.sor_neighbors,
-        sor_std_ratio=a.sor_std_ratio,
         seed=a.seed, workers=a.workers,
         resume=a.resume, limit=a.limit,
         list_test=a.list_test, output_csv_test=output_csv_test,
         analyze=a.analyze, plots=a.plots,
+        preprocess=PreprocessConfig(
+            units=a.units,
+            flip_z=a.flip_z,
+            downsample=a.downsample,
+            sor_std_ratio=a.sor_std_ratio,
+            sor_neighbors=a.sor_neighbors,
+            min_range=a.min_range,
+            height_threshold=a.height_threshold,
+            verbose=a.verbose,
+        ),
     )
 
 
@@ -361,7 +364,8 @@ def process_batch(cfg: BatchAlphaConfig, *,
                     continue
 
                 try:
-                    pts = load_and_normalize(item.full_path, cfg.units, cfg.flip_z)
+                    res = preprocess_cloud(str(item.full_path), cfg.preprocess)
+                    pts = res.vegetation
                     if len(pts) == 0:
                         writer.writerow({"file": item.rel_path, **item.labels,
                                          "error": "empty cloud"})
