@@ -41,6 +41,28 @@ def _metrics(y: np.ndarray, y_pred: np.ndarray) -> dict:
             "bias": m["bias"], "r2": m["r2"]}
 
 
+def bootstrap_test_r2_ci(predict, x_test: np.ndarray, y_test: np.ndarray,
+                         n_boot: int = 1000, seed: int = 0,
+                         alpha: float = 0.05) -> tuple[float, float]:
+    """95% percentile-bootstrap CI на test-R² для уже зафиксированного фита."""
+    x_test = np.asarray(x_test, dtype=float)
+    y_test = np.asarray(y_test, dtype=float)
+    n = len(x_test)
+    if n < 3:
+        return float("nan"), float("nan")
+    rng = np.random.default_rng(seed)
+    r2s = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = rng.integers(0, n, n)
+        r2s[i] = compute_metrics(y_test[idx], predict(x_test[idx]))["r2"]
+    r2s = r2s[np.isfinite(r2s)]
+    if r2s.size < 10:
+        return float("nan"), float("nan")
+    lo = float(np.percentile(r2s, 100 * alpha / 2))
+    hi = float(np.percentile(r2s, 100 * (1 - alpha / 2)))
+    return lo, hi
+
+
 def fit_linear(x: np.ndarray, y: np.ndarray) -> ModelFit | None:
     if len(x) < 3:
         return None

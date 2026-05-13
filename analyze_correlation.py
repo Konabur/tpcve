@@ -15,7 +15,8 @@ import numpy as np
 import pandas as pd
 
 from tools.autoname import default_path
-from tools.regression import compute_metrics, fit_all, flatten_for_csv, plot_fits
+from tools.regression import (bootstrap_test_r2_ci, compute_metrics, fit_all,
+                              flatten_for_csv, plot_fits)
 
 NON_METHOD_COLS = {"file", "biomass", "col3", "col4", "col5",
                    "n_input", "n_after_sor", "n_vegetation", "error"}
@@ -119,17 +120,23 @@ def main() -> int:
                 row[f"{name}_test_rmse"] = m["rmse"]
                 row[f"{name}_test_rmse_pct"] = m["rmse_pct"]
                 row[f"{name}_test_bias"] = m["bias"]
+                ci_lo, ci_hi = bootstrap_test_r2_ci(f["predict"], xv, yv)
+                row[f"{name}_test_r2_ci_lo"] = ci_lo
+                row[f"{name}_test_r2_ci_hi"] = ci_hi
             test_rows.append(row)
         if test_rows:
             test_df = pd.DataFrame(test_rows)
             print(f"\nTest (n_test до {test_df['n_test'].max()}):")
             print("=" * 130)
-            show = ["method", "n_test",
-                    "linear_test_r2", "linear_test_rmse_pct", "linear_test_bias",
-                    "power_test_r2",  "power_test_rmse_pct",  "power_test_bias",
-                    "huber_test_r2",  "huber_test_rmse_pct",  "huber_test_bias"]
-            print(test_df[show].to_string(index=False,
-                                         float_format=lambda v: f"{v:.4g}"))
+            disp = test_df[["method", "n_test"]].copy()
+            for name in ("linear", "power", "huber"):
+                disp[f"{name}_R2[CI95]"] = [
+                    f"{a:.3f}[{b:.2f},{c:.2f}]" for a, b, c in zip(
+                        test_df[f"{name}_test_r2"],
+                        test_df[f"{name}_test_r2_ci_lo"],
+                        test_df[f"{name}_test_r2_ci_hi"])]
+                disp[f"{name}_RMSE%"] = test_df[f"{name}_test_rmse_pct"].round(1)
+            print(disp.to_string(index=False))
             print("=" * 130)
             test_out = out_csv.with_name(out_csv.stem + "_test" + out_csv.suffix)
             test_df.to_csv(test_out, index=False)
@@ -156,12 +163,27 @@ def main() -> int:
             y = df.loc[mask, args.target].to_numpy()
 
             xv, yv = test_data.get(col, (None, None))
-            fig, ax = plt.subplots(figsize=(6.5, 4.8))
+            fig, (ax, ax_r) = plt.subplots(1, 2, figsize=(13, 4.8))
             plot_fits(ax, x, y, result,
                       xlabel=f"{col} (м³)",
                       ylabel=args.target,
                       title=f"{args.target} ~ {col}",
                       x_test=xv, y_test=yv)
+            best = result["best"]
+            y_pred_tr = best["predict"](x)
+            ax_r.scatter(y_pred_tr, y - y_pred_tr, s=20, alpha=0.6,
+                         color="#444", label=f"train (n={len(x)})")
+            if xv is not None and len(xv) > 0:
+                y_pred_te = best["predict"](xv)
+                ax_r.scatter(y_pred_te, yv - y_pred_te, s=28, alpha=0.85,
+                             color="#d62728", marker="^",
+                             label=f"test (n={len(xv)})")
+            ax_r.axhline(0, color="k", lw=0.8, ls="--")
+            ax_r.set_xlabel(f"fitted {args.target}")
+            ax_r.set_ylabel("residual (y − ŷ)")
+            ax_r.set_title(f"Residuals [{result['best_model']}]")
+            ax_r.legend(loc="best", fontsize=8)
+            ax_r.grid(alpha=0.3)
             fig.tight_layout()
             fig.savefig(out / f"{col}.png", dpi=130)
             plt.close(fig)
