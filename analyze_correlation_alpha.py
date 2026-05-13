@@ -41,7 +41,8 @@ def main() -> int:
     p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None,
                    help="Если указано — сохранить scatter+линии для каждой группы. "
                         "Без значения: results/regression_plots/alpha/<stem>/")
-    p.add_argument("--top", type=int, default=None)
+    p.add_argument("--top", type=int, default=None,
+                   help="Показать только top-N методов по R²")
     p.add_argument("--source", choices=["voxel", "random", "both"],
                    default="voxel",
                    help="По какой колонке V строить регрессию (default: voxel)")

@@ -49,6 +49,7 @@ class BatchCountConfig:
     output_csv_test: Path | None = None
     analyze: bool = True
     plots: bool = True
+    top: int | None = None
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
 
 
@@ -94,6 +95,8 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchCountConfig:
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--resume", action="store_true")
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--top", type=int, default=None,
+                   help="Передать --top N в analyze_correlation_count.py")
     p.add_argument("--analyze", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="После batch вызвать analyze_correlation_count.py "
@@ -133,7 +136,7 @@ def parse_args(argv: Iterable[str] | None = None) -> BatchCountConfig:
         base_dir=Path(a.base_dir), output_csv=output_csv,
         resume=a.resume, limit=a.limit,
         list_test=a.list_test, output_csv_test=output_csv_test,
-        analyze=a.analyze, plots=a.plots,
+        analyze=a.analyze, plots=a.plots, top=a.top,
         preprocess=PreprocessConfig(
             units=a.units,
             flip_z=a.flip_z,
@@ -251,6 +254,8 @@ def main(argv: Iterable[str] | None = None) -> int:
             cmd += ["--test-csv", str(cfg.output_csv_test)]
         if cfg.plots:
             cmd.append("--plots-dir")
+        if cfg.top is not None:
+            cmd += ["--top", str(cfg.top)]
         print(f"\n>>> {' '.join(cmd)}")
         subprocess.run(cmd, check=False)
     return rc

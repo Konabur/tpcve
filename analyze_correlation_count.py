@@ -39,7 +39,8 @@ def main() -> int:
     p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None,
                    help="Если указано — сохранить scatter+линии для каждой группы. "
                         "Без значения: results/regression_plots/count/<stem>/")
-    p.add_argument("--top", type=int, default=None)
+    p.add_argument("--top", type=int, default=None,
+                   help="Показать только top-N методов по R²")
     args = p.parse_args()
 
     df = pd.read_csv(args.csv)
