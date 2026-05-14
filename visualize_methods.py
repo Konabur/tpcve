@@ -23,11 +23,12 @@ from typing import Iterable
 
 import numpy as np
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, PowerNorm
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from batch_process import parse_list_line
@@ -35,8 +36,8 @@ from cloud_pipeline import PreprocessConfig, preprocess_cloud
 from downsample_alpha_compare import _layer_triangles
 
 
-CMAP_HEIGHT = "YlGn"        # для 2D heatmap CHM
-CMAP_HEIGHT_3D = "viridis"  # для 3D-сцен: тёмное дно не сливается с полом
+# Единый print-friendly colormap: perceptually uniform, CVD-safe, читается в ч/б.
+CMAP = "cividis"
 
 
 # -----------------------------------------------------------------------------
@@ -94,6 +95,9 @@ def parse_args(argv: Iterable[str] | None = None):
     p.add_argument("--output", default=None,
                    help="Путь к PNG; если не задан — "
                         "results/figures/methods_compare/<stem>_<params>.png")
+    p.add_argument("--color-gamma", type=float, default=0.6,
+                   help="Gamma для PowerNorm высот; <1 осветляет нижнюю часть "
+                        "шкалы (default: 0.6)")
     p.add_argument("--dpi", type=int, default=150)
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
@@ -251,6 +255,20 @@ def _xy_extent(pts: np.ndarray, side: float = 1.0
     return (cx - h, cx + h, cy - h, cy + h)
 
 
+def _style_3d_axes(ax) -> None:
+    """Светлый фон panes, светло-серая сетка, чёрные подписи/тики."""
+    white = (1.0, 1.0, 1.0, 1.0)
+    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis.set_pane_color(white)
+        try:
+            axis._axinfo["grid"]["color"] = (0.85, 0.85, 0.85, 1.0)
+            axis._axinfo["grid"]["linewidth"] = 0.4
+        except Exception:
+            pass
+    ax.tick_params(colors="black")
+    ax.title.set_color("black")
+
+
 def _set_equal_aspect(ax, pts: np.ndarray, xy_side: float = 1.0,
                       z_side: float = 1.0) -> None:
     if len(pts) == 0:
@@ -264,13 +282,14 @@ def _set_equal_aspect(ax, pts: np.ndarray, xy_side: float = 1.0,
         ax.set_box_aspect((1, 1, z_side / xy_side))
     except Exception:
         pass
+    _style_3d_axes(ax)
 
 
-def _scatter_cloud(ax, pts: np.ndarray, *, s=1.5, alpha=0.45):
+def _scatter_cloud(ax, pts: np.ndarray, *, s=1.5, alpha=0.45, norm=None):
     if len(pts) == 0:
         return
     ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2],
-               c=pts[:, 2], cmap=CMAP_HEIGHT_3D,
+               c=pts[:, 2], cmap=CMAP, norm=norm,
                s=s, alpha=alpha, linewidths=0)
 
 
@@ -282,8 +301,8 @@ def _subsample(pts: np.ndarray, n_max: int, rng) -> np.ndarray:
 
 
 def panel_a_raw(ax, veg: np.ndarray, xy_side: float = 1.0,
-                z_side: float = 1.0):
-    _scatter_cloud(ax, veg, s=5, alpha=0.7)
+                z_side: float = 1.0, norm=None):
+    _scatter_cloud(ax, veg, s=6, alpha=0.85, norm=norm)
     _set_equal_aspect(ax, veg, xy_side=xy_side, z_side=z_side)
     ax.set_title("A. Облако растительности")
     ax.set_xlabel("x"); ax.set_ylabel("y"); ax.set_zlabel("z (м)")
@@ -305,31 +324,34 @@ def _cube_faces(c: np.ndarray, size: float) -> np.ndarray:
 
 def panel_b_voxel(ax, veg: np.ndarray, voxel_size: float,
                   xy_side: float = 1.0, z_side: float = 1.0,
-                  max_cubes: int = 50000):
-    _scatter_cloud(ax, veg, s=3, alpha=0.3)
+                  max_cubes: int = 50000, norm=None):
+    _scatter_cloud(ax, veg, s=3, alpha=0.20, norm=norm)
     centers = occupied_voxel_centers(veg, voxel_size)
     if len(centers) > max_cubes:
         # защита от лютого числа граней; в обычных условиях не срабатывает
         rng = np.random.default_rng(0)
         idx = rng.choice(len(centers), size=max_cubes, replace=False)
         centers_draw = centers[idx]
-        print(f"[panel B] вокселей {len(centers)} > {max_cubes}, "
-              f"рисуем сабсэмпл")
+        tqdm.write(f"[panel B] вокселей {len(centers)} > {max_cubes}, "
+                   f"рисуем сабсэмпл")
     else:
         centers_draw = centers
-    norm = Normalize(vmin=veg[:, 2].min() if len(veg) else 0.0,
-                     vmax=veg[:, 2].max() if len(veg) else 1.0)
-    cmap = plt.get_cmap(CMAP_HEIGHT_3D)
+    if norm is None:
+        norm = Normalize(vmin=veg[:, 2].min() if len(veg) else 0.0,
+                         vmax=veg[:, 2].max() if len(veg) else 1.0)
+    cmap = plt.get_cmap(CMAP)
     faces = []
     face_colors = []
-    for c in centers_draw:
+    iterator = tqdm(centers_draw, desc="voxels", leave=False,
+                    disable=len(centers_draw) < 2000)
+    for c in iterator:
         cube = _cube_faces(c, voxel_size)
         faces.extend(cube)
         col = cmap(norm(c[2]))
         face_colors.extend([col] * 6)
     if faces:
-        poly = Poly3DCollection(faces, alpha=0.25, linewidths=0.2,
-                                edgecolors=(0, 0, 0, 0.25))
+        poly = Poly3DCollection(faces, alpha=0.55, linewidths=0.3,
+                                edgecolors=(0, 0, 0, 0.45))
         poly.set_facecolor(face_colors)
         ax.add_collection3d(poly)
     _set_equal_aspect(ax, veg, xy_side=xy_side, z_side=z_side)
@@ -339,21 +361,23 @@ def panel_b_voxel(ax, veg: np.ndarray, voxel_size: float,
 
 
 def panel_c_alpha(ax, veg: np.ndarray, alpha: float, dz: float,
-                  xy_side: float = 1.0, z_side: float = 1.0):
-    _scatter_cloud(ax, veg, s=3, alpha=0.2)
+                  xy_side: float = 1.0, z_side: float = 1.0, norm=None):
+    _scatter_cloud(ax, veg, s=3, alpha=0.20, norm=norm)
     layers = alpha_layers(veg, alpha=alpha, dz=dz, n_layers=None)
     if not layers:
         ax.set_title(f"C. Alpha-shape α={alpha:g}, dz={dz*1000:.0f} мм (нет слоёв)")
         return
-    z_mids = np.array([z for z, _, _ in layers])
-    z_lo, z_hi = float(z_mids.min()), float(z_mids.max())
-    norm = Normalize(vmin=z_lo, vmax=z_hi if z_hi > z_lo else z_lo + 1e-6)
-    cmap = plt.get_cmap(CMAP_HEIGHT_3D)
+    if norm is None:
+        z_mids = np.array([z for z, _, _ in layers])
+        z_lo, z_hi = float(z_mids.min()), float(z_mids.max())
+        norm = Normalize(vmin=z_lo, vmax=z_hi if z_hi > z_lo else z_lo + 1e-6)
+    cmap = plt.get_cmap(CMAP)
     n = len(layers)
-    # Градиент прозрачности: нижние слои сильно прозрачные (видны верхние),
-    # верхние — поплотнее. Линейно 0.10 → 0.45.
-    alphas = np.linspace(0.10, 0.45, n)
-    for (z_mid, xy, simplices), a in zip(layers, alphas):
+    # Градиент прозрачности: нижние слои прозрачнее (видны верхние),
+    # верхние — плотнее. Линейно 0.25 → 0.70 для печатного контраста.
+    alphas = np.linspace(0.25, 0.70, n)
+    for (z_mid, xy, simplices), a in tqdm(list(zip(layers, alphas)),
+                                          desc="alpha layers", leave=False):
         verts = []
         for s in simplices:
             tri = xy[s]
@@ -361,7 +385,7 @@ def panel_c_alpha(ax, veg: np.ndarray, alpha: float, dz: float,
         rgba = list(cmap(norm(z_mid)))
         rgba[3] = float(a)
         poly = Poly3DCollection(verts, linewidths=0.2,
-                                edgecolors=(0, 0, 0, 0.15))
+                                edgecolors=(0, 0, 0, 0.30))
         poly.set_facecolor(rgba)
         ax.add_collection3d(poly)
     _set_equal_aspect(ax, veg, xy_side=xy_side, z_side=z_side)
@@ -371,18 +395,20 @@ def panel_c_alpha(ax, veg: np.ndarray, alpha: float, dz: float,
 
 
 def panel_d_chm(ax, veg: np.ndarray, cell_size: float, percentile: float, fig,
-                xy_side: float = 1.0):
+                xy_side: float = 1.0, norm=None):
     grid, extent = chm_grid(veg, cell_size=cell_size, percentile=percentile)
     im = ax.imshow(grid, origin="lower", extent=extent,
-                   cmap=CMAP_HEIGHT, interpolation="nearest",
+                   cmap=CMAP, norm=norm, interpolation="nearest",
                    aspect="equal")
     x0, x1, y0, y1 = _xy_extent(veg, side=xy_side)
     ax.set_xlim(x0, x1)
     ax.set_ylim(y0, y1)
     ax.set_title(f"D. CHM cell={cell_size*1000:.0f} мм, p{percentile:g}")
     ax.set_xlabel("x (м)"); ax.set_ylabel("y (м)")
+    ax.tick_params(colors="black")
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label("высота (м)")
+    cbar.ax.tick_params(colors="black")
 
 
 # -----------------------------------------------------------------------------
@@ -434,14 +460,24 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     xy_side = float(args.xy_size)
     z_side = float(args.z_size)
-    panel_a_raw(ax_a, veg_draw, xy_side=xy_side, z_side=z_side)
-    panel_b_voxel(ax_b, veg_draw, voxel_size=args.voxel_size_mm / 1000.0,
-                  xy_side=xy_side, z_side=z_side)
-    panel_c_alpha(ax_c, veg, alpha=args.alpha,
-                  dz=args.layer_dz_mm / 1000.0,
-                  xy_side=xy_side, z_side=z_side)
-    panel_d_chm(ax_d, veg, cell_size=args.cell_size_mm / 1000.0,
-                percentile=args.percentile, fig=fig, xy_side=xy_side)
+    # Шкала высот фиксируется по z_side для сопоставимости Z31 vs Z65.
+    # gamma<1 осветляет нижнюю половину cividis, чтобы Z31 (max~0.6 м) не уходил
+    # в почти-чёрное при общем vmax=1.0 м.
+    norm = PowerNorm(gamma=args.color_gamma, vmin=0.0, vmax=z_side)
+    with tqdm(total=4, desc="rendering", unit="panel") as bar:
+        panel_a_raw(ax_a, veg_draw, xy_side=xy_side, z_side=z_side, norm=norm)
+        bar.update(1)
+        panel_b_voxel(ax_b, veg_draw, voxel_size=args.voxel_size_mm / 1000.0,
+                      xy_side=xy_side, z_side=z_side, norm=norm)
+        bar.update(1)
+        panel_c_alpha(ax_c, veg, alpha=args.alpha,
+                      dz=args.layer_dz_mm / 1000.0,
+                      xy_side=xy_side, z_side=z_side, norm=norm)
+        bar.update(1)
+        panel_d_chm(ax_d, veg, cell_size=args.cell_size_mm / 1000.0,
+                    percentile=args.percentile, fig=fig, xy_side=xy_side,
+                    norm=norm)
+        bar.update(1)
 
     suptitle = f"{cloud_path.stem}"
     if stage:
@@ -466,7 +502,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=args.dpi)
     plt.close(fig)
-    print(f"Сохранено: {out}")
+    tqdm.write(f"Сохранено: {out}")
     return 0
 
 
