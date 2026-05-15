@@ -1,17 +1,20 @@
 """Демо предсказания биомассы для одного облака.
 
-Берёт три regression-CSV (voxel / layered-alpha / CHM), выбирает первую строку
-(в наших CSV они уже отсортированы по убыванию R²), парсит из неё параметры
-метода и коэффициенты best_model. Выбирает медианное по биомассе облако из
---list (как visualize_methods.py), прогоняет на нём каждый метод, подставляет
-полученный скаляр в регрессию и печатает таблицу с абс./отн. ошибкой.
+Берёт пять regression-CSV (voxel / layered-alpha / CHM / height-percentile /
+count), выбирает первую строку (в наших CSV они уже отсортированы по убыванию
+R²), парсит из неё параметры метода и коэффициенты best_model. Выбирает
+медианное по биомассе облако из --list (как visualize_methods.py), прогоняет на
+нём каждый метод, подставляет полученный скаляр в регрессию и печатает таблицу
+с абс./отн. ошибкой.
 
 Пример:
     uv run python predict_biomass.py \\
         --list data/some_list.txt \\
-        --voxel-csv results/regression_csv/voxel/<...>.csv \\
-        --alpha-csv results/regression_csv/alpha/<...>.csv \\
-        --chm-csv   results/regression_csv/chm/<...>.csv
+        --voxel-csv  results/regression_csv/voxel/<...>.csv \\
+        --alpha-csv  results/regression_csv/alpha/<...>.csv \\
+        --chm-csv    results/regression_csv/chm/<...>.csv \\
+        --height-csv results/regression_csv/height/<...>.csv \\
+        --count-csv  results/regression_csv/count/<...>.csv
 """
 from __future__ import annotations
 
@@ -52,6 +55,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--voxel-csv", required=True)
     p.add_argument("--alpha-csv", required=True)
     p.add_argument("--chm-csv", required=True)
+    p.add_argument("--height-csv", required=True)
+    p.add_argument("--count-csv", required=True)
 
     p.add_argument("--units", default=os.getenv("TPCVE_UNITS", "auto"),
                    choices=["auto", "m", "cm", "mm"])
@@ -150,10 +155,41 @@ def _load_chm(csv_path: str) -> dict:
     }
 
 
+def _load_height(csv_path: str) -> dict:
+    row = pd.read_csv(csv_path).iloc[0]
+    percentile = float(row["percentile"])
+    model, predict, coefs = _build_predict(row)
+    train_r2 = float(row[f"{model}_r2"])
+    return {
+        "kind": "height",
+        "params_str": f"p={percentile:g}",
+        "params": {"percentile": percentile},
+        "model": model, "predict": predict, "coefs": coefs,
+        "train_r2": train_r2,
+    }
+
+
+def _load_count(csv_path: str) -> dict:
+    row = pd.read_csv(csv_path).iloc[0]
+    source = str(row["source"])
+    if source not in ("raw", "pre"):
+        raise ValueError(f"count CSV: ожидался source ∈ {{raw,pre}}, "
+                         f"получили {source!r}")
+    model, predict, coefs = _build_predict(row)
+    train_r2 = float(row[f"{model}_r2"])
+    return {
+        "kind": "count",
+        "params_str": f"source={source}",
+        "params": {"source": source},
+        "model": model, "predict": predict, "coefs": coefs,
+        "train_r2": train_r2,
+    }
+
+
 # ----------------------------------------------------------------------------
 # Применение метода к облаку
 
-def _compute_x(method: dict, veg: np.ndarray) -> float:
+def _compute_x(method: dict, veg: np.ndarray, pre) -> float:
     kind = method["kind"]
     p = method["params"]
     if kind == "voxel":
@@ -171,6 +207,12 @@ def _compute_x(method: dict, veg: np.ndarray) -> float:
     if kind == "chm":
         vol, _ = chm_volume(veg, p["cell_size_m"], p["percentile"])
         return float(vol)
+    if kind == "height":
+        if len(veg) == 0:
+            return 0.0
+        return float(np.percentile(veg[:, 2], p["percentile"]))
+    if kind == "count":
+        return float(pre.n_input if p["source"] == "raw" else len(veg))
     raise ValueError(kind)
 
 
@@ -188,6 +230,8 @@ def main(argv: Iterable[str] | None = None) -> int:
         _load_voxel(args.voxel_csv),
         _load_alpha(args.alpha_csv),
         _load_chm(args.chm_csv),
+        _load_height(args.height_csv),
+        _load_count(args.count_csv),
     ]
 
     cfg = PreprocessConfig(
@@ -210,6 +254,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     print(f"True biomass: {biomass_gt:.3f} g/m²")
     print()
 
+    units = {"voxel": "m³", "alpha": "m³", "chm": "m³",
+             "height": "m", "count": "pts"}
     header = (f"{'method':<6} | {'params':<28} | {'model':<6} | "
               f"{'x_pred':<14} | {'y_pred (g/m²)':>13} | "
               f"{'abs_err (g/m²)':>14} | {'rel_err':>8} | {'train R²':>8}")
@@ -218,11 +264,11 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     results = []
     for m in methods:
-        x = _compute_x(m, veg)
+        x = _compute_x(m, veg, pre)
         y = float(m["predict"](x))
         abs_err = y - biomass_gt
         rel_err_pct = abs_err / biomass_gt * 100 if biomass_gt > 0 else float("nan")
-        unit = "m³" if m["kind"] in ("voxel", "alpha", "chm") else ""
+        unit = units.get(m["kind"], "")
         print(f"{m['kind']:<6} | {m['params_str']:<28} | {m['model']:<6} | "
               f"{x:>10.4f} {unit:<3} | {y:>13.2f} | {abs_err:>+14.2f} | "
               f"{rel_err_pct:>+7.2f}% | {m['train_r2']:>8.3f}")
