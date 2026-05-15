@@ -2,7 +2,8 @@
 без высоты, без сетки). Для каждого облака пишет две строки:
 
     source = "raw" — n_points = число точек в исходном файле (без обработки)
-    source = "pre" — n_points = число точек после preprocess
+    source = "pre" — n_points = число точек растительности (после preprocess
+                    + классификации по height_threshold)
                      (units → flip-z → min-range → downsample → SOR)
 
 Источник входа — либо --list (с биомассой/метками), либо --input-dir
@@ -221,7 +222,7 @@ def process_batch(cfg: BatchCountConfig, *, items: list | None = None,
                 n_err += 1
                 continue
 
-            counts = {"raw": int(res.n_input), "pre": int(res.n_after_sor)}
+            counts = {"raw": int(res.n_input), "pre": int(len(res.vegetation))}
             for source in SOURCES:
                 row = {
                     "file": item.rel_path, **item.labels,
