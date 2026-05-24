@@ -49,8 +49,12 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--env-file", default=None)
-    p.add_argument("--list", dest="list_file", required=True,
-                   help="Список plot'ов (формат batch_process.parse_list_line)")
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--list", dest="list_file",
+                     help="Список plot'ов (формат batch_process.parse_list_line); "
+                          "выбирается медианное по биомассе облако")
+    src.add_argument("--cloud", dest="cloud_file",
+                     help="Путь к одному облаку (без GT биомассы)")
     p.add_argument("--base-dir", default=os.getenv("TPCVE_BASE_DIR", "data"))
     p.add_argument("--voxel-csv", required=True)
     p.add_argument("--alpha-csv", required=True)
@@ -223,8 +227,12 @@ def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
     base_dir = Path(args.base_dir)
 
-    cloud_path, biomass_gt, _ = pick_median_biomass(
-        args.list_file, base_dir, stage=None)
+    if args.list_file:
+        cloud_path, biomass_gt, _ = pick_median_biomass(
+            args.list_file, base_dir, stage=None)
+    else:
+        cloud_path = Path(args.cloud_file).resolve()
+        biomass_gt = None
 
     methods = [
         _load_voxel(args.voxel_csv),
@@ -251,14 +259,22 @@ def main(argv: Iterable[str] | None = None) -> int:
     print(f"Cloud:        {rel}")
     print(f"Points:       in={pre.n_input}  sor={pre.n_after_sor}  "
           f"veg={len(veg)}")
-    print(f"True biomass: {biomass_gt:.3f} g/m²")
+    if biomass_gt is not None:
+        print(f"True biomass: {biomass_gt:.3f} g/m²")
+    else:
+        print("True biomass: N/A (single-cloud mode)")
     print()
 
     units = {"voxel": "m³", "alpha": "m³", "chm": "m³",
              "height": "m", "count": "pts"}
-    header = (f"{'method':<6} | {'params':<28} | {'model':<6} | "
-              f"{'x_pred':<14} | {'y_pred (g/m²)':>13} | "
-              f"{'abs_err (g/m²)':>14} | {'rel_err':>8} | {'train R²':>8}")
+    has_gt = biomass_gt is not None
+    if has_gt:
+        header = (f"{'method':<6} | {'params':<28} | {'model':<6} | "
+                  f"{'x_pred':<14} | {'y_pred (g/m²)':>13} | "
+                  f"{'abs_err (g/m²)':>14} | {'rel_err':>8} | {'train R²':>8}")
+    else:
+        header = (f"{'method':<6} | {'params':<28} | {'model':<6} | "
+                  f"{'x_pred':<14} | {'y_pred (g/m²)':>13} | {'train R²':>8}")
     print(header)
     print("-" * len(header))
 
@@ -266,23 +282,34 @@ def main(argv: Iterable[str] | None = None) -> int:
     for m in methods:
         x = _compute_x(m, veg, pre)
         y = float(m["predict"](x))
-        abs_err = y - biomass_gt
-        rel_err_pct = abs_err / biomass_gt * 100 if biomass_gt > 0 else float("nan")
         unit = units.get(m["kind"], "")
-        print(f"{m['kind']:<6} | {m['params_str']:<28} | {m['model']:<6} | "
-              f"{x:>10.4f} {unit:<3} | {y:>13.2f} | {abs_err:>+14.2f} | "
-              f"{rel_err_pct:>+7.2f}% | {m['train_r2']:>8.3f}")
-        results.append({
-            "method": m["kind"], "params": m["params_str"],
-            "model": m["model"], "coefs": m["coefs"],
-            "x_pred": x, "y_pred": y,
-            "abs_err": abs_err, "rel_err_pct": rel_err_pct,
-            "train_r2": m["train_r2"],
-        })
+        if has_gt:
+            abs_err = y - biomass_gt
+            rel_err_pct = abs_err / biomass_gt * 100 if biomass_gt > 0 else float("nan")
+            print(f"{m['kind']:<6} | {m['params_str']:<28} | {m['model']:<6} | "
+                  f"{x:>10.4f} {unit:<3} | {y:>13.2f} | {abs_err:>+14.2f} | "
+                  f"{rel_err_pct:>+7.2f}% | {m['train_r2']:>8.3f}")
+            results.append({
+                "method": m["kind"], "params": m["params_str"],
+                "model": m["model"], "coefs": m["coefs"],
+                "x_pred": x, "y_pred": y,
+                "abs_err": abs_err, "rel_err_pct": rel_err_pct,
+                "train_r2": m["train_r2"],
+            })
+        else:
+            print(f"{m['kind']:<6} | {m['params_str']:<28} | {m['model']:<6} | "
+                  f"{x:>10.4f} {unit:<3} | {y:>13.2f} | {m['train_r2']:>8.3f}")
+            results.append({
+                "method": m["kind"], "params": m["params_str"],
+                "model": m["model"], "coefs": m["coefs"],
+                "x_pred": x, "y_pred": y,
+                "train_r2": m["train_r2"],
+            })
 
     if args.output_json:
         out = {
-            "cloud": str(rel), "biomass_true": biomass_gt,
+            "cloud": str(rel),
+            "biomass_true": biomass_gt if biomass_gt is not None else None,
             "n_input": pre.n_input, "n_after_sor": pre.n_after_sor,
             "n_vegetation": int(len(veg)), "predictions": results,
         }
