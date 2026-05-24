@@ -29,6 +29,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize, PowerNorm
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from batch_process import parse_list_line
@@ -94,7 +95,12 @@ def parse_args(argv: Iterable[str] | None = None):
                         "(не влияет на сами методы) (default: 20000)")
     p.add_argument("--output", default=None,
                    help="Путь к PNG; если не задан — "
-                        "results/figures/methods_compare/<stem>_<params>.png")
+                        "results/figures/methods_compare/<stem>_<params>.png. "
+                        "Игнорируется при --separate.")
+    p.add_argument("--separate", action="store_true",
+                   help="Вместо 4-панельной фигуры сохранить три парных PNG "
+                        "(A+B, A+C, A+D) в "
+                        "results/figures/methods_compare/<stem><suffix>/{voxel,alpha,chm}.png")
     p.add_argument("--color-gamma", type=float, default=0.6,
                    help="Gamma для PowerNorm высот; <1 осветляет нижнюю часть "
                         "шкалы (default: 0.6)")
@@ -406,7 +412,11 @@ def panel_d_chm(ax, veg: np.ndarray, cell_size: float, percentile: float, fig,
     ax.set_title(f"D. CHM cell={cell_size*1000:.0f} мм, p{percentile:g}")
     ax.set_xlabel("x (м)"); ax.set_ylabel("y (м)")
     ax.tick_params(colors="black")
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    # colorbar в inset, чтобы не отъедать ширину у основной оси
+    cax = inset_axes(ax, width="4%", height="100%", loc="center left",
+                     bbox_to_anchor=(1.02, 0.0, 1.0, 1.0),
+                     bbox_transform=ax.transAxes, borderpad=0)
+    cbar = fig.colorbar(im, cax=cax)
     cbar.set_label("высота (м)")
     cbar.ax.tick_params(colors="black")
 
@@ -452,18 +462,97 @@ def main(argv: Iterable[str] | None = None) -> int:
     rng = np.random.default_rng(0)
     veg_draw = _subsample(veg, args.max_scatter, rng)
 
-    fig = plt.figure(figsize=(16, 12))
-    ax_a = fig.add_subplot(2, 2, 1, projection="3d")
-    ax_b = fig.add_subplot(2, 2, 2, projection="3d")
-    ax_c = fig.add_subplot(2, 2, 3, projection="3d")
-    ax_d = fig.add_subplot(2, 2, 4)
-
     xy_side = float(args.xy_size)
     z_side = float(args.z_size)
     # Шкала высот фиксируется по z_side для сопоставимости Z31 vs Z65.
     # gamma<1 осветляет нижнюю половину cividis, чтобы Z31 (max~0.6 м) не уходил
     # в почти-чёрное при общем vmax=1.0 м.
     norm = PowerNorm(gamma=args.color_gamma, vmin=0.0, vmax=z_side)
+
+    suptitle = f"{cloud_path.stem}"
+    if stage:
+        suptitle += f"  [{stage}]"
+    if picked_bm is not None:
+        suptitle += f"  (biomass={picked_bm:g})"
+
+    suffix = (f"_v{args.voxel_size_mm:g}"
+              f"_a{args.alpha:g}"
+              f"_dz{args.layer_dz_mm:g}"
+              f"_c{args.cell_size_mm:g}"
+              f"_p{args.percentile:g}")
+    if stage:
+        suffix = f"_{stage}" + suffix
+
+    if args.separate:
+        if args.output:
+            tqdm.write("[warn] --output игнорируется при --separate")
+        out_dir = (Path("results") / "figures" / "methods_compare"
+                   / (cloud_path.stem + suffix))
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Жёсткие figure-bbox для левой и правой панелей — одинаковы во всех
+        # трёх парах, чтобы A нигде не «гулял».
+        LEFT_BBOX = (0.02, 0.04, 0.44, 0.86)
+        RIGHT_BBOX = (0.50, 0.04, 0.44, 0.86)
+        # 3D-куб matplotlib занимает ~78% своего ax-rect; 2D ужимаем до той же
+        # доли, центрируя в RIGHT_BBOX, чтобы визуально совпасть с 3D-кубом.
+        CUBE_FRAC = 0.78
+
+        def _save_pair(name: str, draw_right, is_2d: bool = False):
+            fig = plt.figure(figsize=(12, 6))
+            ax_left = fig.add_subplot(1, 2, 1, projection="3d")
+            panel_a_raw(ax_left, veg_draw, xy_side=xy_side, z_side=z_side,
+                        norm=norm)
+            ax_right = draw_right(fig)
+            fig.suptitle(suptitle, fontsize=13)
+            ax_left.set_position(LEFT_BBOX)
+            if is_2d:
+                x0, y0, w, h = RIGHT_BBOX
+                cx, cy = x0 + w / 2, y0 + h / 2
+                w2, h2 = w * CUBE_FRAC, h * CUBE_FRAC
+                ax_right.set_position([cx - w2 / 2, cy - h2 / 2, w2, h2])
+            else:
+                ax_right.set_position(RIGHT_BBOX)
+            out = out_dir / f"{name}.png"
+            fig.savefig(out, dpi=args.dpi)
+            plt.close(fig)
+            tqdm.write(f"Сохранено: {out}")
+
+        with tqdm(total=3, desc="rendering", unit="pair") as bar:
+            def _voxel(fig):
+                ax = fig.add_subplot(1, 2, 2, projection="3d")
+                panel_b_voxel(ax, veg_draw,
+                              voxel_size=args.voxel_size_mm / 1000.0,
+                              xy_side=xy_side, z_side=z_side, norm=norm)
+                return ax
+            _save_pair("voxel", _voxel)
+            bar.update(1)
+
+            def _alpha(fig):
+                ax = fig.add_subplot(1, 2, 2, projection="3d")
+                panel_c_alpha(ax, veg, alpha=args.alpha,
+                              dz=args.layer_dz_mm / 1000.0,
+                              xy_side=xy_side, z_side=z_side, norm=norm)
+                return ax
+            _save_pair("alpha", _alpha)
+            bar.update(1)
+
+            def _chm(fig):
+                ax = fig.add_subplot(1, 2, 2)
+                panel_d_chm(ax, veg, cell_size=args.cell_size_mm / 1000.0,
+                            percentile=args.percentile, fig=fig,
+                            xy_side=xy_side, norm=norm)
+                return ax
+            _save_pair("chm", _chm, is_2d=True)
+            bar.update(1)
+        return 0
+
+    fig = plt.figure(figsize=(16, 12))
+    ax_a = fig.add_subplot(2, 2, 1, projection="3d")
+    ax_b = fig.add_subplot(2, 2, 2, projection="3d")
+    ax_c = fig.add_subplot(2, 2, 3, projection="3d")
+    ax_d = fig.add_subplot(2, 2, 4)
+
     with tqdm(total=4, desc="rendering", unit="panel") as bar:
         panel_a_raw(ax_a, veg_draw, xy_side=xy_side, z_side=z_side, norm=norm)
         bar.update(1)
@@ -479,26 +568,14 @@ def main(argv: Iterable[str] | None = None) -> int:
                     norm=norm)
         bar.update(1)
 
-    suptitle = f"{cloud_path.stem}"
-    if stage:
-        suptitle += f"  [{stage}]"
-    if picked_bm is not None:
-        suptitle += f"  (biomass={picked_bm:g})"
     fig.suptitle(suptitle, fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.97])
 
     if args.output:
         out = Path(args.output)
     else:
-        stem = cloud_path.stem
-        suffix = (f"_v{args.voxel_size_mm:g}"
-                  f"_a{args.alpha:g}"
-                  f"_dz{args.layer_dz_mm:g}"
-                  f"_c{args.cell_size_mm:g}"
-                  f"_p{args.percentile:g}")
-        if stage:
-            suffix = f"_{stage}" + suffix
-        out = Path("results") / "figures" / "methods_compare" / (stem + suffix + ".png")
+        out = (Path("results") / "figures" / "methods_compare"
+               / (cloud_path.stem + suffix + ".png"))
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=args.dpi)
     plt.close(fig)
