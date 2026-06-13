@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -30,7 +29,7 @@ import open3d as o3d
 import pandas as pd
 from dotenv import load_dotenv
 
-from batch_chm import chm_volume
+from methods.chm import chm_volume
 from cloud_pipeline import PreprocessConfig, preprocess_cloud
 from downsample_alpha_compare import alpha_layered
 from visualize_methods import pick_median_biomass
@@ -103,15 +102,9 @@ def _build_predict(row: pd.Series) -> tuple[str, Callable[[float], float], str]:
     return model, predict, coefs
 
 
-_VOXEL_RE = re.compile(r"voxel_([0-9_]+)mm")
-
-
 def _load_voxel(csv_path: str) -> dict:
     row = pd.read_csv(csv_path).iloc[0]
-    m = _VOXEL_RE.match(str(row["method"]))
-    if not m:
-        raise ValueError(f"voxel CSV: не распарсилась колонка method={row['method']!r}")
-    voxel_mm = float(m.group(1).replace("_", "."))
+    voxel_mm = float(row["voxel_mm"])
     model, predict, coefs = _build_predict(row)
     train_r2 = float(row[f"{model}_r2"])
     return {
