@@ -19,19 +19,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from generate_cloud import load_real_cloud
-from geometry import random_downsample, voxel_downsample
+from geometry import random_downsample, sor, voxel_downsample
 from tools.autoname import build_name, default_path
-
-
-def sor(points: np.ndarray, nb_neighbors: int, std_ratio: float) -> np.ndarray:
-    if len(points) <= nb_neighbors:
-        return points
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    pcd_sor, _ = pcd.remove_statistical_outlier(
-        nb_neighbors=nb_neighbors, std_ratio=std_ratio, print_progress=False
-    )
-    return np.asarray(pcd_sor.points)
 
 
 def scatter(points: np.ndarray, name: str, color: str) -> go.Scatter3d:

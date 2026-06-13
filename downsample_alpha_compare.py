@@ -23,8 +23,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from tqdm import tqdm
 
-from downsample_compare import sor as apply_sor
-from geometry import _compute_one, random_downsample, voxel_downsample
+from geometry import _compute_one, random_downsample, sor, voxel_downsample
 from generate_cloud import load_real_cloud
 from tools.autoname import build_name, default_path
 
@@ -210,8 +209,8 @@ def main() -> int:
                f"random({args.seed}) → {len(r_pts):,}")
         if args.sor:
             n_v0, n_r0 = len(v_pts), len(r_pts)
-            v_pts = apply_sor(v_pts, args.sor_neighbors, args.sor_std_ratio)
-            r_pts = apply_sor(r_pts, args.sor_neighbors, args.sor_std_ratio)
+            v_pts = sor(v_pts, args.sor_neighbors, args.sor_std_ratio)
+            r_pts = sor(r_pts, args.sor_neighbors, args.sor_std_ratio)
             msg += (f" | SOR(k={args.sor_neighbors},σ={args.sor_std_ratio}): "
                     f"voxel {n_v0:,}→{len(v_pts):,}, "
                     f"random {n_r0:,}→{len(r_pts):,}")

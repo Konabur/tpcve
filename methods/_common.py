@@ -83,6 +83,51 @@ def load_done_keys(csv_path: Path, key_fn: Callable[[dict], str]) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
+# Выбор облака из списка (по стадии роста / медиане биомассы)
+
+# Стадия роста определяется по подстроке в пути облака (дата съёмки).
+STAGE_TOKENS = {"Z31": "0828", "Z65": "1002"}
+
+
+def stage_from_path(path: str) -> str | None:
+    for stage, tok in STAGE_TOKENS.items():
+        if tok in path:
+            return stage
+    return None
+
+
+def pick_median_biomass(list_path: str, base_dir: Path,
+                        stage: str | None = None
+                        ) -> tuple[Path, float, str | None]:
+    """Из --list-файла выбрать облако с медианной биомассой.
+
+    Возвращает (полный путь, биомасса, стадия). При stage != None берутся только
+    облака этой стадии. Пустой результат → SystemExit.
+    """
+    rows: list[tuple[Path, float, str | None]] = []
+    with open(list_path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            try:
+                rel, labels = parse_list_line(line)
+                bm = float(labels["biomass"])
+            except (ValueError, KeyError):
+                continue
+            st = stage_from_path(rel)
+            if stage is not None and st != stage:
+                continue
+            rows.append((base_dir / rel.lstrip("/\\"), bm, st))
+    if not rows:
+        msg = f"В {list_path} не нашлось валидных строк с биомассой"
+        if stage is not None:
+            msg += f" для стадии {stage} (подстрока '{STAGE_TOKENS[stage]}')"
+        raise SystemExit(msg)
+    rows.sort(key=lambda r: r[1])
+    return rows[len(rows) // 2]
+
+
+# ---------------------------------------------------------------------------
 # Общие CLI/preprocess хелперы (имена и дефолты как в исходных batch-скриптах)
 
 def load_env_from_argv(argv: Iterable[str] | None) -> None:

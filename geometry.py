@@ -34,6 +34,20 @@ def random_downsample(points: np.ndarray, n: int, seed: int) -> np.ndarray:
     return points[idx]
 
 
+def sor(points: np.ndarray, nb_neighbors: int, std_ratio: float) -> np.ndarray:
+    """Statistical Outlier Removal: выкидывает точки, чьё среднее расстояние до
+    nb_neighbors соседей отстоит от общего среднего больше чем на std_ratio·σ.
+    Облака не больше nb_neighbors возвращаются как есть."""
+    if len(points) <= nb_neighbors:
+        return points
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd_sor, _ = pcd.remove_statistical_outlier(
+        nb_neighbors=nb_neighbors, std_ratio=std_ratio, print_progress=False
+    )
+    return np.asarray(pcd_sor.points)
+
+
 # --- alpha-shape геометрия ---
 
 def alpha_mesh(points: np.ndarray, alpha: float):
