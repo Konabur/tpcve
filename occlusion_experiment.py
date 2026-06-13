@@ -16,11 +16,12 @@ np.random.seed(42)
 OUTPUT_DIR = "results"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Импортируем функции из main.py
-from main import (
+# Генерация облака — в generate_cloud.py, оценка объёма — в volume_methods.py
+from generate_cloud import (
     generate_ground, generate_wheat_field, simulate_occlusion,
-    add_realistic_noise, voxel_volume
+    add_realistic_noise
 )
+from volume_methods import voxel_volume
 
 print("=" * 60)
 print("ЭКСПЕРИМЕНТ: ВЛИЯНИЕ ОККЛЮЗИИ НА ТОЧНОСТЬ")
