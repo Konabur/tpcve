@@ -34,10 +34,12 @@ def convex_hull_volume(points: np.ndarray) -> float:
     return ConvexHull(points).volume
 
 
-def _subsample(points: np.ndarray, limit: int = MAX_ALPHA_POINTS) -> np.ndarray:
+def _subsample(points: np.ndarray, limit: int = MAX_ALPHA_POINTS,
+               seed: int = 0) -> np.ndarray:
     if len(points) <= limit:
         return points
-    idx = np.random.choice(len(points), limit, replace=False)
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(points), limit, replace=False)
     return points[idx]
 
 
