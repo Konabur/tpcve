@@ -204,6 +204,28 @@ def run_long_batch(spec: LongBatchSpec, *, items: list[InputItem],
     return 0
 
 
+def chain_analyze(mod, output_csv: Path, argv: Iterable[str] | None) -> None:
+    """Запустить analyze метода после batch, если --analyze (parity со старыми
+    скриптами + переиспользуется диспетчером batch.py). Флаги analyze собираются
+    из общих batch-флагов: --test-csv (если был --list-test), --plots-dir, --top."""
+    p = argparse.ArgumentParser(add_help=False)
+    add_common_batch_args(p)
+    mod.add_batch_args(p)
+    a, _ = p.parse_known_args(argv)
+    if not a.analyze:
+        return
+    an = [str(output_csv)]
+    if a.list_test:
+        an += ["--test-csv", str(output_csv.with_name(
+            output_csv.stem + "_test" + output_csv.suffix))]
+    if a.plots:
+        an.append("--plots-dir")
+    if a.top is not None:
+        an += ["--top", str(a.top)]
+    print(f"\n>>> analyze {getattr(mod, 'NAME', '?')}: {' '.join(an)}")
+    mod.run_analyze(an)
+
+
 # ---------------------------------------------------------------------------
 # Общий long-analyze: регрессия biomass ~ x по группам. Единая схема regression-CSV
 # для ВСЕХ методов: [method, *group_cols, x_col, <статистики>]. (Унификация после
