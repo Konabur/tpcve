@@ -205,9 +205,11 @@ def run_long_batch(spec: LongBatchSpec, *, items: list[InputItem],
 
 
 def chain_analyze(mod, output_csv: Path, argv: Iterable[str] | None) -> None:
-    """Запустить analyze метода после batch, если --analyze (parity со старыми
-    скриптами + переиспользуется диспетчером batch.py). Флаги analyze собираются
-    из общих batch-флагов: --test-csv (если был --list-test), --plots-dir, --top."""
+    """Запустить analyze метода сразу после batch, если включён --analyze.
+
+    Аргументы для analyze выводятся из общих batch-флагов: путь к train-CSV,
+    --test-csv (если был --list-test), --plots-dir (если --plots), --top. Вызывается
+    и при прямом запуске метода (python -m methods.<name>), и диспетчером batch.py."""
     p = argparse.ArgumentParser(add_help=False)
     add_common_batch_args(p)
     mod.add_batch_args(p)
@@ -227,9 +229,8 @@ def chain_analyze(mod, output_csv: Path, argv: Iterable[str] | None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Общий long-analyze: регрессия biomass ~ x по группам. Единая схема regression-CSV
-# для ВСЕХ методов: [method, *group_cols, x_col, <статистики>]. (Унификация после
-# ревью — байт-идентичность regression-CSV не требуется, проверяем числа.)
+# Общий long-analyze: регрессия biomass ~ x по группам строк CSV. Единая схема
+# выходного regression-CSV: [method, *group_cols, x_col, <статистики fit_all>].
 
 def _as_tuple(keys) -> tuple:
     return keys if isinstance(keys, tuple) else (keys,)

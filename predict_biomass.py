@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 
 from methods.chm import chm_volume
 from cloud_pipeline import PreprocessConfig, preprocess_cloud
-from downsample_alpha_compare import alpha_layered
+from geometry import alpha_layered
 from visualize_methods import pick_median_biomass
 from volume_methods import voxel_volume
 

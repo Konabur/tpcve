@@ -19,20 +19,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from generate_cloud import load_real_cloud
+from geometry import random_downsample, voxel_downsample
 from tools.autoname import build_name, default_path
-
-
-def voxel_downsample(points: np.ndarray, voxel_m: float) -> np.ndarray:
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    return np.asarray(pcd.voxel_down_sample(voxel_size=voxel_m).points)
-
-
-def random_downsample(points: np.ndarray, n: int, seed: int) -> np.ndarray:
-    n = min(n, len(points))
-    rng = np.random.default_rng(seed)
-    idx = rng.choice(len(points), n, replace=False)
-    return points[idx]
 
 
 def sor(points: np.ndarray, nb_neighbors: int, std_ratio: float) -> np.ndarray:

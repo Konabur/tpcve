@@ -34,7 +34,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from methods._common import parse_list_line
 from cloud_pipeline import PreprocessConfig, preprocess_cloud
-from downsample_alpha_compare import _layer_triangles
+from geometry import _layer_triangles
 
 
 # Единый print-friendly colormap: perceptually uniform, CVD-safe, читается в ч/б.

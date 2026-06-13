@@ -1,6 +1,11 @@
-"""Метод alpha: alpha-shape объём (3D или послойный) по растительности, sweep по
-(voxel_size, alpha[, layer_dz]). Свой run_batch с ProcessPool (тяжёлый), формат
-строк long. Использует downsample_alpha_compare/_compute_one.
+"""Метод alpha: объём растительности через alpha-shape.
+
+Растительность прореживается voxel-downsample до размера voxel_size, затем
+считается alpha-shape объём — 3D-меш либо послойный (срезы по Z толщиной
+layer_dz). Batch перебирает сетку (voxel_size × alpha[, layer_dz]); опционально
+(--with-random) добавляет сравнение со случайным прореживанием той же мощности.
+
+Тяжёлый этап: alpha-shape считается в пуле процессов (--workers).
 """
 from __future__ import annotations
 
@@ -19,8 +24,7 @@ import open3d as o3d
 from tqdm import tqdm
 
 from cloud_pipeline import PreprocessConfig
-from downsample_alpha_compare import _compute_one
-from downsample_compare import random_downsample, voxel_downsample
+from geometry import _compute_one, random_downsample, voxel_downsample
 from tools.autoname import build_name, default_path
 from methods import _common as common
 

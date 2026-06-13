@@ -1,7 +1,11 @@
-"""Метод chm (Canopy Height Model): проекция растительности на XY-сетку, в каждой
-ячейке percentile Z, V = Σ h × cell_area. Sweep по (cell_size_mm × percentile).
+"""Метод chm (Canopy Height Model): объём полога через сетку высот.
 
-Экспортирует chm_volume() — используется predict_biomass.py.
+Точки растительности проецируются на XY-сетку с ячейкой cell_size; в каждой
+ячейке берётся percentile значения Z (высота полога), объём = Σ height·cell_area.
+Batch перебирает сетку (cell_size_mm × percentile).
+
+Публичная функция:
+    chm_volume(points, cell_size_m, percentile) -> (volume_m3, n_cells)
 """
 from __future__ import annotations
 
@@ -30,7 +34,7 @@ def add_analyze_args(p: argparse.ArgumentParser) -> None:
     pass
 
 
-# --- объём CHM (перенесено из batch_chm.py без изменений) ---
+# --- объём CHM ---
 
 def _bin_and_sort(points: np.ndarray, cell_size_m: float):
     """Сгруппировать точки по XY-ячейкам и отсортировать Z в каждой группе.
