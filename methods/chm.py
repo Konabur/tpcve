@@ -12,10 +12,10 @@ from pathlib import Path
 import numpy as np
 
 from tools.autoname import build_name, default_path
-from methods import _common as C
+from methods import _common as common
 
 NAME = "chm"
-COLUMNS = ["file", *C.LABEL_COLS, "cell_size_mm", "percentile",
+COLUMNS = ["file", *common.LABEL_COLS, "cell_size_mm", "percentile",
            "n_cells", "V_chm", "error"]
 
 
@@ -83,7 +83,7 @@ def _row_key(row: dict) -> str:
     return f"{row['file']}|{row['cell_size_mm']}|{row['percentile']}"
 
 
-def _error_rows(item: C.InputItem, msg: str) -> list[dict]:
+def _error_rows(item: common.InputItem, msg: str) -> list[dict]:
     return [{"file": item.rel_path, **item.labels, "error": msg}]
 
 
@@ -125,9 +125,9 @@ def _make_compute_rows(cell_sizes_mm, percentiles):
 
 
 def run_batch(argv=None) -> Path:
-    C.load_env_from_argv(argv)
+    common.load_env_from_argv(argv)
     p = argparse.ArgumentParser(description=__doc__)
-    C.add_common_batch_args(p)
+    common.add_common_batch_args(p)
     add_batch_args(p)
     a, _ = p.parse_known_args(argv)  # known_args: при --method a,b чужие флаги игнор
 
@@ -145,23 +145,23 @@ def run_batch(argv=None) -> Path:
         name = build_name(source=a.list_file or a.input_dir,
                           source_kind="list" if a.list_file else "dir",
                           cell_sizes_mm=cell_sizes, percentiles=percentiles,
-                          extra=C.autoname_extra_from_args(a))
+                          extra=common.autoname_extra_from_args(a))
         output_csv = default_path("volume_chm", name, ".csv")
     else:
         output_csv = Path(a.output_csv)
 
     cfg = type("Cfg", (), {"list_file": a.list_file, "input_dir": a.input_dir,
                            "base_dir": Path(a.base_dir), "limit": a.limit})()
-    spec = C.LongBatchSpec(columns=COLUMNS, row_key=_row_key,
+    spec = common.LongBatchSpec(columns=COLUMNS, row_key=_row_key,
                            error_rows=_error_rows,
                            compute_rows=_make_compute_rows(cell_sizes, percentiles))
-    pre = C.preprocess_config_from_args(a)
-    C.run_long_batch(spec, items=C.collect_for(cfg, None), csv_path=output_csv,
+    pre = common.preprocess_config_from_args(a)
+    common.run_long_batch(spec, items=common.collect_for(cfg, None), csv_path=output_csv,
                      resume=a.resume, preprocess=pre, label="train")
     if a.list_test:
         test_csv = output_csv.with_name(output_csv.stem + "_test"
                                         + output_csv.suffix)
-        C.run_long_batch(spec, items=C.collect_for(cfg, a.list_test),
+        common.run_long_batch(spec, items=common.collect_for(cfg, a.list_test),
                          csv_path=test_csv, resume=a.resume, preprocess=pre,
                          label="test")
     return output_csv
@@ -177,7 +177,7 @@ def run_analyze(argv=None) -> int:
     p.add_argument("--top", type=int, default=None)
     add_analyze_args(p)
     args, _ = p.parse_known_args(argv)  # known_args: терпим к чужим флагам при мульти-методе
-    return C.run_long_analyze(
+    return common.run_long_analyze(
         args, value_cols=["V_chm"],
         group_cols=["cell_size_mm", "percentile"],
         label_fn=lambda meta, vc: (f"c{float(meta['cell_size_mm']):g}_"
@@ -188,7 +188,7 @@ def run_analyze(argv=None) -> int:
 
 def main(argv=None) -> int:
     csv_path = run_batch(argv)
-    C.chain_analyze(sys.modules[__name__], csv_path, argv)
+    common.chain_analyze(sys.modules[__name__], csv_path, argv)
     return 0
 
 

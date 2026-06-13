@@ -22,12 +22,12 @@ from cloud_pipeline import PreprocessConfig
 from downsample_alpha_compare import _compute_one
 from downsample_compare import random_downsample, voxel_downsample
 from tools.autoname import build_name, default_path
-from methods import _common as C
+from methods import _common as common
 
 NAME = "alpha"
 
 BASE_COLUMNS = [
-    "file", *C.LABEL_COLS,
+    "file", *common.LABEL_COLS,
     "voxel_mm",
     "alpha", "mode", "layer_dz_mm",
     "n_voxel", "V_voxel",
@@ -92,7 +92,7 @@ def auto_voxel_mm(points: np.ndarray) -> float:
     return float(nn.mean()) * 1000
 
 
-def build_tasks(item: C.InputItem, points: np.ndarray, cfg: AlphaConfig,
+def build_tasks(item: common.InputItem, points: np.ndarray, cfg: AlphaConfig,
                 done_keys: set[str] | None = None
                 ) -> tuple[list[tuple], dict]:
     """Возвращает (tasks_for_pool, rows). Layered: один таск на (size, dz, kind)
@@ -174,17 +174,17 @@ def _row_key(row: dict) -> str:
 
 
 def process_batch(cfg: AlphaConfig, *,
-                  items: list[C.InputItem] | None = None,
+                  items: list[common.InputItem] | None = None,
                   csv_path: Path | None = None,
                   label: str = "train") -> int:
     if items is None:
-        items = C.collect_for(cfg, None)
+        items = common.collect_for(cfg, None)
     if csv_path is None:
         csv_path = cfg.output_csv
     print(f"[{label}] файлов на входе: {len(items)} -> {csv_path}")
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    done_keys = C.load_done_keys(csv_path, _row_key) if cfg.resume else set()
+    done_keys = common.load_done_keys(csv_path, _row_key) if cfg.resume else set()
     file_exists = csv_path.exists()
     mode = "a" if (cfg.resume and file_exists) else "w"
 
@@ -295,9 +295,9 @@ def process_batch(cfg: AlphaConfig, *,
 
 
 def run_batch(argv=None) -> Path:
-    C.load_env_from_argv(argv)
+    common.load_env_from_argv(argv)
     p = argparse.ArgumentParser(description=__doc__)
-    C.add_common_batch_args(p)
+    common.add_common_batch_args(p)
     add_batch_args(p)
     a, _ = p.parse_known_args(argv)  # known_args: при --method a,b чужие флаги игнор
 
@@ -314,7 +314,7 @@ def run_batch(argv=None) -> Path:
     layered = bool(layer_dz_list)
 
     if a.output_csv is None:
-        extra = C.autoname_extra_from_args(a)
+        extra = common.autoname_extra_from_args(a)
         if a.with_random:
             extra["rand"] = True
         name = build_name(
@@ -340,13 +340,13 @@ def run_batch(argv=None) -> Path:
         with_random=a.with_random,
         seed=a.seed, workers=a.workers,
         resume=a.resume, limit=a.limit,
-        preprocess=C.preprocess_config_from_args(a),
+        preprocess=common.preprocess_config_from_args(a),
     )
     process_batch(cfg, csv_path=output_csv, label="train")
     if a.list_test:
         test_csv = output_csv.with_name(output_csv.stem + "_test"
                                         + output_csv.suffix)
-        items_test = C.collect_for(cfg, a.list_test)
+        items_test = common.collect_for(cfg, a.list_test)
         process_batch(cfg, items=items_test, csv_path=test_csv, label="test")
     return output_csv
 
@@ -374,7 +374,7 @@ def run_analyze(argv=None) -> int:
         return (f"v{float(meta['voxel_mm']):g}_a{float(meta['alpha']):g}_"
                 f"{mode}{suffix}")
 
-    return C.run_long_analyze(
+    return common.run_long_analyze(
         args, value_cols=value_cols,
         group_cols=["voxel_mm", "alpha", "mode", "layer_dz_mm"],
         label_fn=label_fn, prep_df=prep_df,
@@ -384,7 +384,7 @@ def run_analyze(argv=None) -> int:
 
 def main(argv=None) -> int:
     csv_path = run_batch(argv)
-    C.chain_analyze(sys.modules[__name__], csv_path, argv)
+    common.chain_analyze(sys.modules[__name__], csv_path, argv)
     return 0
 
 
