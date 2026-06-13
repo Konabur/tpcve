@@ -1,4 +1,4 @@
-"""Bayesian-оптимизатор R² для batch_process / batch_alpha / batch_chm.
+"""Bayesian-оптимизатор R² для методов voxel / alpha / chm (через batch.py).
 
 Для выбранного метода ищет натуральные параметры в заданных пользователем
 границах через Optuna TPE и максимизирует max(linear_r2, power_r2, huber_r2)

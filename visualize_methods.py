@@ -32,7 +32,7 @@ from matplotlib.colors import Normalize, PowerNorm
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from methods._common import parse_list_line, pick_median_biomass, stage_from_path
+from methods._common import parse_list_line
 from cloud_pipeline import PreprocessConfig, preprocess_cloud
 from geometry import _layer_triangles
 

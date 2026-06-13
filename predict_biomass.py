@@ -50,7 +50,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--env-file", default=None)
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--list", dest="list_file",
-                     help="Список plot'ов (формат batch_process.parse_list_line); "
+                     help="Список plot'ов (формат methods._common.parse_list_line); "
                           "выбирается медианное по биомассе облако")
     src.add_argument("--cloud", dest="cloud_file",
                      help="Путь к одному облаку (без GT биомассы)")

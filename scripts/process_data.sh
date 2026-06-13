@@ -12,6 +12,7 @@ if [ -d "venv/bin" ]; then
     source venv/bin/activate
 elif [ -d ".venv/bin" ]; then
     source .venv/bin/activate
+fi
 
 echo "=========================================="
 echo "ПАКЕТНАЯ ОБРАБОТКА ДАТАСЕТОВ"
