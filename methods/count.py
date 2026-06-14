@@ -57,7 +57,7 @@ def run_batch(argv=None) -> Path:
         name = build_name(source=a.list_file or a.input_dir,
                           source_kind="list" if a.list_file else "dir",
                           extra=common.autoname_extra_from_args(a))
-        output_csv = default_path("volume_count", name, ".csv")
+        output_csv = default_path("volume_csv", name, subfolder=NAME)
     else:
         output_csv = Path(a.output_csv)
 
@@ -90,8 +90,7 @@ def run_analyze(argv=None) -> int:
     return common.run_long_analyze(args, value_cols=["n_points"],
                               group_cols=["source"],
                               label_fn=lambda meta, vc: str(meta["source"]),
-                              kind_regression="regression_count",
-                              kind_plots="regression_plots_count")
+                              subfolder=NAME)
 
 
 def main(argv=None) -> int:

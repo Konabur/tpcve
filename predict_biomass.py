@@ -13,7 +13,7 @@ R²), парсит из неё параметры метода и коэффиц
         --voxel-csv  results/regression_csv/voxel/<...>.csv \\
         --alpha-csv  results/regression_csv/alpha/<...>.csv \\
         --chm-csv    results/regression_csv/chm/<...>.csv \\
-        --height-csv results/regression_csv/height/<...>.csv \\
+        --height-csv results/regression_csv/percentile/<...>.csv \\
         --count-csv  results/regression_csv/count/<...>.csv
 """
 from __future__ import annotations

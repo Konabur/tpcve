@@ -10,24 +10,12 @@ from typing import Iterable
 
 RESULTS_ROOT = Path("results")
 
-KIND_DIRS: dict[str, Path] = {
-    "volume_voxel":           RESULTS_ROOT / "volume_csv" / "voxel",
-    "volume_alpha":           RESULTS_ROOT / "volume_csv" / "alpha",
-    "volume_chm":             RESULTS_ROOT / "volume_csv" / "chm",
-    "volume_height":          RESULTS_ROOT / "volume_csv" / "height",
-    "volume_count":           RESULTS_ROOT / "volume_csv" / "count",
-    "regression_voxel":       RESULTS_ROOT / "regression_csv" / "voxel",
-    "regression_alpha":       RESULTS_ROOT / "regression_csv" / "alpha",
-    "regression_chm":         RESULTS_ROOT / "regression_csv" / "chm",
-    "regression_height":      RESULTS_ROOT / "regression_csv" / "height",
-    "regression_count":       RESULTS_ROOT / "regression_csv" / "count",
-    "regression_plots_voxel": RESULTS_ROOT / "regression_plots" / "voxel",
-    "regression_plots_alpha": RESULTS_ROOT / "regression_plots" / "alpha",
-    "regression_plots_chm":   RESULTS_ROOT / "regression_plots" / "chm",
-    "regression_plots_height": RESULTS_ROOT / "regression_plots" / "height",
-    "regression_plots_count": RESULTS_ROOT / "regression_plots" / "count",
-    "downsample_compare":     RESULTS_ROOT / "downsample" / "downsample_compare",
-    "downsample_alpha":       RESULTS_ROOT / "downsample" / "downsample_alpha",
+AREA_DIRS: dict[str, Path] = {
+    "volume_csv":         RESULTS_ROOT / "volume_csv",
+    "regression_csv":     RESULTS_ROOT / "regression_csv",
+    "regression_plots":   RESULTS_ROOT / "regression_plots",
+    "downsample_compare": RESULTS_ROOT / "downsample" / "downsample_compare",
+    "downsample_alpha":   RESULTS_ROOT / "downsample" / "downsample_alpha",
 }
 
 
@@ -120,12 +108,15 @@ def build_name(
     return "_".join(parts) or "run"
 
 
-def default_path(kind: str, name: str, ext: str = ".csv") -> Path:
-    if kind not in KIND_DIRS:
+def default_path(area: str, name: str, ext: str = ".csv", *,
+                 subfolder: str | None = None) -> Path:
+    if area not in AREA_DIRS:
         raise ValueError(
-            f"Unknown kind: {kind!r}; available: {sorted(KIND_DIRS)}"
+            f"Unknown area: {area!r}; available: {sorted(AREA_DIRS)}"
         )
-    d = KIND_DIRS[kind]
+    d = AREA_DIRS[area]
+    if subfolder:
+        d = d / subfolder
     d.mkdir(parents=True, exist_ok=True)
     if ext and not ext.startswith("."):
         ext = "." + ext

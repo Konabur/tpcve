@@ -150,7 +150,7 @@ def run_batch(argv=None) -> Path:
                           source_kind="list" if a.list_file else "dir",
                           cell_sizes_mm=cell_sizes, percentiles=percentiles,
                           extra=common.autoname_extra_from_args(a))
-        output_csv = default_path("volume_chm", name, ".csv")
+        output_csv = default_path("volume_csv", name, subfolder=NAME)
     else:
         output_csv = Path(a.output_csv)
 
@@ -186,8 +186,7 @@ def run_analyze(argv=None) -> int:
         group_cols=["cell_size_mm", "percentile"],
         label_fn=lambda meta, vc: (f"c{float(meta['cell_size_mm']):g}_"
                                    f"p{float(meta['percentile']):g}"),
-        kind_regression="regression_chm",
-        kind_plots="regression_plots_chm")
+        subfolder=NAME)
 
 
 def main(argv=None) -> int:

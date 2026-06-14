@@ -14,13 +14,9 @@ from pathlib import Path
 
 from methods import METHODS, load
 
-# NAME -> подпапка results/volume_csv для автопоиска (percentile живёт в height/)
-_VOLUME_SUBDIR = {"voxel": "voxel", "alpha": "alpha", "chm": "chm",
-                  "count": "count", "percentile": "height"}
-
 
 def _latest_csv(name: str) -> Path:
-    d = Path("results") / "volume_csv" / _VOLUME_SUBDIR[name]
+    d = Path("results") / "volume_csv" / name
     cands = [c for c in d.glob("*.csv") if not c.stem.endswith("_test")]
     if not cands:
         raise SystemExit(f"Нет CSV в {d} — укажи --input-csv")
@@ -49,10 +45,9 @@ def main(argv=None) -> int:
         pre.error("--input-csv должен содержать столько путей, сколько методов")
 
     for name, csv in zip(names, inputs):
-        mod = load(name)
         path = Path(csv) if csv else _latest_csv(name)
         print(f"\n=== analyze: {name} <- {path} ===")
-        mod.run_analyze([str(path), *rest])
+        load(name).run_analyze([str(path), *rest])
     return 0
 
 

@@ -283,7 +283,7 @@ def _as_tuple(keys) -> tuple:
 
 def run_long_analyze(args, *, value_cols: list[str], group_cols: list[str],
                      label_fn: Callable[[dict, str], str],
-                     kind_regression: str, kind_plots: str,
+                     subfolder: str,
                      prep_df: Callable | None = None) -> int:
     """Единый analyze для всех методов.
 
@@ -365,7 +365,8 @@ def run_long_analyze(args, *, value_cols: list[str], group_cols: list[str],
         out_csv = Path(args.output)
         out_csv.parent.mkdir(parents=True, exist_ok=True)
     else:
-        out_csv = default_path(kind_regression, stem + "_regression", ".csv")
+        out_csv = default_path("regression_csv", stem + "_regression",
+                               subfolder=subfolder)
     res_df.to_csv(out_csv, index=False)
     print(f"\nСохранено: {out_csv}")
 
@@ -422,7 +423,7 @@ def run_long_analyze(args, *, value_cols: list[str], group_cols: list[str],
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        out = (default_path(kind_plots, stem, ext="")
+        out = (default_path("regression_plots", stem, ext="", subfolder=subfolder)
                if args.plots_dir == "__auto__" else Path(args.plots_dir))
         out.mkdir(parents=True, exist_ok=True)
         for r in res_df.itertuples(index=False):

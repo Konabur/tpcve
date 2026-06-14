@@ -69,7 +69,7 @@ def run_batch(argv=None) -> Path:
                           source_kind="list" if a.list_file else "dir",
                           voxels_mm=voxels_token,
                           extra=common.autoname_extra_from_args(a))
-        output_csv = default_path("volume_voxel", name, ".csv")
+        output_csv = default_path("volume_csv", name, subfolder=NAME)
     else:
         output_csv = Path(a.output_csv)
 
@@ -103,8 +103,7 @@ def run_analyze(argv=None) -> int:
     return common.run_long_analyze(args, value_cols=["V_voxel"],
                               group_cols=["voxel_mm"],
                               label_fn=lambda meta, vc: f"v{float(meta['voxel_mm']):g}",
-                              kind_regression="regression_voxel",
-                              kind_plots="regression_plots_voxel")
+                              subfolder=NAME)
 
 
 def main(argv=None) -> int:

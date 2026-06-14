@@ -331,7 +331,7 @@ def run_batch(argv=None) -> Path:
             layer_dz_mm=layer_dz_list if layered else None,
             extra=extra,
         )
-        output_csv = default_path("volume_alpha", name, ".csv")
+        output_csv = default_path("volume_csv", name, subfolder=NAME)
     else:
         output_csv = Path(a.output_csv)
 
@@ -382,8 +382,7 @@ def run_analyze(argv=None) -> int:
         args, value_cols=value_cols,
         group_cols=["voxel_mm", "alpha", "mode", "layer_dz_mm"],
         label_fn=label_fn, prep_df=prep_df,
-        kind_regression="regression_alpha",
-        kind_plots="regression_plots_alpha")
+        subfolder=NAME)
 
 
 def main(argv=None) -> int:
