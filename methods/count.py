@@ -34,6 +34,10 @@ def _error_rows(item: common.InputItem, msg: str) -> list[dict]:
              "n_points": "", "error": msg} for s in SOURCES]
 
 
+def _label(meta, vc):
+    return str(meta["source"])
+
+
 def _compute_rows(item, res, done_keys) -> list[dict]:
     counts = {"raw": int(res.n_input), "pre": int(len(res.vegetation))}
     out = []
@@ -61,42 +65,22 @@ def run_batch(argv=None) -> Path:
     else:
         output_csv = Path(a.output_csv)
 
-    cfg = type("Cfg", (), {"list_file": a.list_file, "input_dir": a.input_dir,
-                           "base_dir": Path(a.base_dir), "limit": a.limit})()
     spec = common.LongBatchSpec(columns=COLUMNS, row_key=_row_key,
-                           error_rows=_error_rows, compute_rows=_compute_rows)
-    pre = common.preprocess_config_from_args(a)
-    common.run_long_batch(spec, items=common.collect_for(cfg, None), csv_path=output_csv,
-                     resume=a.resume, preprocess=pre, label="train")
-    if a.list_test:
-        test_csv = output_csv.with_name(output_csv.stem + "_test"
-                                        + output_csv.suffix)
-        common.run_long_batch(spec, items=common.collect_for(cfg, a.list_test),
-                         csv_path=test_csv, resume=a.resume, preprocess=pre,
-                         label="test")
-    return output_csv
+                                error_rows=_error_rows, compute_rows=_compute_rows)
+    return common.run_batch_train_test(spec, a, output_csv)
 
 
 def run_analyze(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("csv")
-    p.add_argument("--test-csv", default=None)
-    p.add_argument("--output", default=None)
-    p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None)
-    p.add_argument("--target", default="biomass")
-    p.add_argument("--top", type=int, default=None)
+    p = common.build_analyze_parser(__doc__)
     add_analyze_args(p)
-    args, _ = p.parse_known_args(argv)  # known_args: терпим к чужим флагам при мульти-методе
+    args, _ = p.parse_known_args(argv)
     return common.run_long_analyze(args, value_cols=["n_points"],
-                              group_cols=["source"],
-                              label_fn=lambda meta, vc: str(meta["source"]),
-                              subfolder=NAME)
+                                   group_cols=["source"], label_fn=_label,
+                                   subfolder=NAME)
 
 
 def main(argv=None) -> int:
-    csv_path = run_batch(argv)
-    common.chain_analyze(sys.modules[__name__], csv_path, argv)
-    return 0
+    return common.standard_main(sys.modules[__name__], argv)
 
 
 if __name__ == "__main__":

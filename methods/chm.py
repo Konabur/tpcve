@@ -87,10 +87,6 @@ def _row_key(row: dict) -> str:
     return f"{row['file']}|{row['cell_size_mm']}|{row['percentile']}"
 
 
-def _error_rows(item: common.InputItem, msg: str) -> list[dict]:
-    return [{"file": item.rel_path, **item.labels, "error": msg}]
-
-
 def _make_compute_rows(cell_sizes_mm, percentiles):
     def compute_rows(item, res, done_keys) -> list[dict]:
         veg = res.vegetation
@@ -154,45 +150,28 @@ def run_batch(argv=None) -> Path:
     else:
         output_csv = Path(a.output_csv)
 
-    cfg = type("Cfg", (), {"list_file": a.list_file, "input_dir": a.input_dir,
-                           "base_dir": Path(a.base_dir), "limit": a.limit})()
     spec = common.LongBatchSpec(columns=COLUMNS, row_key=_row_key,
-                           error_rows=_error_rows,
-                           compute_rows=_make_compute_rows(cell_sizes, percentiles))
-    pre = common.preprocess_config_from_args(a)
-    common.run_long_batch(spec, items=common.collect_for(cfg, None), csv_path=output_csv,
-                     resume=a.resume, preprocess=pre, label="train")
-    if a.list_test:
-        test_csv = output_csv.with_name(output_csv.stem + "_test"
-                                        + output_csv.suffix)
-        common.run_long_batch(spec, items=common.collect_for(cfg, a.list_test),
-                         csv_path=test_csv, resume=a.resume, preprocess=pre,
-                         label="test")
-    return output_csv
+                                error_rows=common.simple_error_rows,
+                                compute_rows=_make_compute_rows(cell_sizes, percentiles))
+    return common.run_batch_train_test(spec, a, output_csv)
+
+
+def _label(meta, vc):
+    return f"c{float(meta['cell_size_mm']):g}_p{float(meta['percentile']):g}"
 
 
 def run_analyze(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("csv")
-    p.add_argument("--test-csv", default=None)
-    p.add_argument("--output", default=None)
-    p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None)
-    p.add_argument("--target", default="biomass")
-    p.add_argument("--top", type=int, default=None)
+    p = common.build_analyze_parser(__doc__)
     add_analyze_args(p)
-    args, _ = p.parse_known_args(argv)  # known_args: терпим к чужим флагам при мульти-методе
+    args, _ = p.parse_known_args(argv)
     return common.run_long_analyze(
         args, value_cols=["V_chm"],
-        group_cols=["cell_size_mm", "percentile"],
-        label_fn=lambda meta, vc: (f"c{float(meta['cell_size_mm']):g}_"
-                                   f"p{float(meta['percentile']):g}"),
+        group_cols=["cell_size_mm", "percentile"], label_fn=_label,
         subfolder=NAME)
 
 
 def main(argv=None) -> int:
-    csv_path = run_batch(argv)
-    common.chain_analyze(sys.modules[__name__], csv_path, argv)
-    return 0
+    return common.standard_main(sys.modules[__name__], argv)
 
 
 if __name__ == "__main__":

@@ -356,13 +356,7 @@ def run_batch(argv=None) -> Path:
 
 
 def run_analyze(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("csv")
-    p.add_argument("--test-csv", default=None)
-    p.add_argument("--output", default=None)
-    p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None)
-    p.add_argument("--target", default="biomass")
-    p.add_argument("--top", type=int, default=None)
+    p = common.build_analyze_parser(__doc__)
     add_analyze_args(p)
     args, _ = p.parse_known_args(argv)  # known_args: терпим к чужим флагам при мульти-методе
 
@@ -386,9 +380,7 @@ def run_analyze(argv=None) -> int:
 
 
 def main(argv=None) -> int:
-    csv_path = run_batch(argv)
-    common.chain_analyze(sys.modules[__name__], csv_path, argv)
-    return 0
+    return common.standard_main(sys.modules[__name__], argv)
 
 
 if __name__ == "__main__":
