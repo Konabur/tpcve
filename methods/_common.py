@@ -24,6 +24,15 @@ class InputItem:
     labels: dict
 
 
+@dataclass
+class BatchCfg:
+    """Минимальный конфиг для collect_inputs/collect_for (заменяет type('Cfg', …))."""
+    list_file: str | None
+    input_dir: str | None
+    base_dir: Path
+    limit: int | None = None
+
+
 def parse_list_line(line: str) -> tuple[str, dict]:
     """`<path> <biomass> <c3> <c4> <c5>` — путь может содержать пробелы."""
     parts = line.strip().split()
@@ -59,13 +68,12 @@ def collect_inputs(cfg, *, list_file: str | None = None) -> list[InputItem]:
 
 
 def collect_for(cfg, list_file: str | None) -> list[InputItem]:
-    """Обёртка для test-прохода: строит временный cfg-объект (как старый _collect)."""
-    items_cfg = type("X", (), {
-        "list_file": list_file if list_file is not None else cfg.list_file,
-        "input_dir": None if list_file is not None else cfg.input_dir,
-        "base_dir": cfg.base_dir, "limit": cfg.limit,
-    })()
-    return collect_inputs(items_cfg)
+    """Обёртка для test-прохода: строит временный cfg-объект."""
+    return collect_inputs(BatchCfg(
+        list_file=list_file if list_file is not None else cfg.list_file,
+        input_dir=None if list_file is not None else cfg.input_dir,
+        base_dir=cfg.base_dir, limit=cfg.limit,
+    ))
 
 
 def load_done_files(csv_path: Path) -> set[str]:
@@ -183,6 +191,14 @@ def preprocess_config_from_args(a) -> PreprocessConfig:
     )
 
 
+def simple_error_rows(item: InputItem, msg: str) -> list[dict]:
+    """Стандартная строка ошибки: одна запись file+labels+error.
+
+    Используют voxel/percentile/chm. count переопределяет (две строки на source).
+    """
+    return [{"file": item.rel_path, **item.labels, "error": msg}]
+
+
 def autoname_extra_from_args(a, *, sor_default: float = 2.0) -> dict:
     extra: dict = {}
     if abs(a.sor_std_ratio - sor_default) > 1e-9:
@@ -249,6 +265,25 @@ def run_long_batch(spec: LongBatchSpec, *, items: list[InputItem],
     return 0
 
 
+def run_batch_train_test(spec: LongBatchSpec, a, output_csv: Path) -> Path:
+    """Общий хвост batch: train-проход + (опц.) test-проход. Возвращает output_csv.
+
+    `a` — распарсенные общие batch-аргументы (add_common_batch_args). Sweep-парсинг
+    и автоназвание остаются в методе; сюда приходит уже готовый spec и output_csv.
+    """
+    cfg = BatchCfg(a.list_file, a.input_dir, Path(a.base_dir), a.limit)
+    pre = preprocess_config_from_args(a)
+    run_long_batch(spec, items=collect_for(cfg, None), csv_path=output_csv,
+                   resume=a.resume, preprocess=pre, label="train")
+    if a.list_test:
+        test_csv = output_csv.with_name(output_csv.stem + "_test"
+                                        + output_csv.suffix)
+        run_long_batch(spec, items=collect_for(cfg, a.list_test),
+                       csv_path=test_csv, resume=a.resume, preprocess=pre,
+                       label="test")
+    return output_csv
+
+
 def chain_analyze(mod, output_csv: Path, argv: Iterable[str] | None) -> None:
     """Запустить analyze метода сразу после batch, если включён --analyze.
 
@@ -271,6 +306,27 @@ def chain_analyze(mod, output_csv: Path, argv: Iterable[str] | None) -> None:
         an += ["--top", str(a.top)]
     print(f"\n>>> analyze {getattr(mod, 'NAME', '?')}: {' '.join(an)}")
     mod.run_analyze(an)
+
+
+def build_analyze_parser(description: str | None = None
+                         ) -> argparse.ArgumentParser:
+    """Стандартный парсер analyze (csv + общие флаги). Метод добавляет своё
+    через add_analyze_args, затем parse_known_args."""
+    p = argparse.ArgumentParser(description=description)
+    p.add_argument("csv")
+    p.add_argument("--test-csv", default=None)
+    p.add_argument("--output", default=None)
+    p.add_argument("--plots-dir", nargs="?", const="__auto__", default=None)
+    p.add_argument("--target", default="biomass")
+    p.add_argument("--top", type=int, default=None)
+    return p
+
+
+def standard_main(module, argv=None) -> int:
+    """Единый main: batch метода, затем chain_analyze. Для всех методов одинаков."""
+    csv_path = module.run_batch(argv)
+    chain_analyze(module, csv_path, argv)
+    return 0
 
 
 # ---------------------------------------------------------------------------
