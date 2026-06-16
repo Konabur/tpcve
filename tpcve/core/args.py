@@ -8,6 +8,7 @@ from typing import Iterable
 from dotenv import load_dotenv
 
 from tpcve.cloud.cloud_pipeline import PreprocessConfig
+from tpcve.core.io import STAGE_TOKENS
 
 
 def load_env_from_argv(argv: Iterable[str] | None) -> None:
@@ -28,6 +29,9 @@ def add_common_batch_args(p: argparse.ArgumentParser, *,
     src.add_argument("--list", dest="list_file")
     src.add_argument("--input-dir")
     p.add_argument("--list-test", default=None)
+    p.add_argument("--stage", default=os.getenv("TPCVE_STAGE") or None,
+                   choices=list(STAGE_TOKENS),
+                   help="Брать только облака этой стадии роста (по дате в пути)")
     p.add_argument("--base-dir", default=os.getenv("TPCVE_BASE_DIR", "data"))
     p.add_argument("--output-csv", default=None)
     p.add_argument("--units", default=os.getenv("TPCVE_UNITS", "auto"),
@@ -73,6 +77,8 @@ def autoname_extra_from_args(a, *, sor_default: float = 2.0) -> dict:
         extra["ds"] = a.downsample
     if a.min_range > 0:
         extra["r"] = a.min_range
+    if getattr(a, "stage", None):
+        extra["stage"] = a.stage  # рендерится сразу после имени, до параметров
     return extra
 
 

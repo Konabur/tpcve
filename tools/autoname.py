@@ -66,6 +66,10 @@ def build_name(
     if stem:
         parts.append(stem)
 
+    # stage идёт сразу после имени источника, до sweep-параметров
+    if extra and extra.get("stage"):
+        parts.append(str(extra["stage"]))
+
     v_tok = _list_token("v", list(voxels_mm) if voxels_mm else [])
     if v_tok:
         parts.append(v_tok)
@@ -96,7 +100,7 @@ def build_name(
 
     if extra:
         for k, v in extra.items():
-            if v is None or v is False or v == "":
+            if k == "stage" or v is None or v is False or v == "":
                 continue
             if v is True:
                 parts.append(str(k))

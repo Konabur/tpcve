@@ -130,14 +130,29 @@ pip install laspy
 `test_list.txt` / `train_list.txt` — это разбиение делянок на test/train,
 включающее обе стадии; стадия каждой делянки определяется по дате в пути.
 
+**Фильтр по стадии (`--stage`).** Удобный флаг под этот набор: оставляет только
+облака нужной стадии — и для `--list`, и для `--input-dir`. Стадия определяется
+по дате в пути (`STAGE_TOKENS` в `tpcve/core/io.py`), отдельная колонка не нужна.
+Можно задать через `TPCVE_STAGE`. Когда флаг указан, имя выходного CSV получает
+токен стадии сразу после имени источника (`train_list_Z31_v7...`).
+
 ```bash
-# регрессия по обучающему списку набора
+# регрессия по обучающему списку набора (обе стадии)
 python batch.py --method voxel --base-dir /path/to/Yanco_TC_2019_HI-pcd \
   --list /path/to/train_list.txt --voxel-sizes 6,7,8,10
+
+# только стадия Z65 (съёмка 2019-10-02)
+python batch.py --method voxel --base-dir /path/to/Yanco_TC_2019_HI-pcd \
+  --list /path/to/train_list.txt --stage Z65 --voxel-sizes 6,7,8,10
 
 # прогон по всей разархивированной папке (без меток биомассы)
 python batch.py --method count --input-dir /path/to/Yanco_TC_2019_HI-pcd --no-analyze
 ```
+
+> Поддержка стадий (`--stage`, `STAGE_TOKENS`) и формат `--list` заточены под
+> структуру набора Yanco TC 2019 для удобства воспроизведения. Для других
+> наборов стадии можно не использовать (флаг опционален), а список делянок —
+> оформить в том же формате `<путь> <biomass> <col3> <col4> <col5>`.
 
 ### Примеры
 

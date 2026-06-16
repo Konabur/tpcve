@@ -23,6 +23,7 @@ class BatchCfg:
     input_dir: str | None
     base_dir: Path
     limit: int | None = None
+    stage: str | None = None
 
 
 def parse_list_line(line: str) -> tuple[str, dict]:
@@ -38,6 +39,7 @@ def parse_list_line(line: str) -> tuple[str, dict]:
 def collect_inputs(cfg, *, list_file: str | None = None) -> list[InputItem]:
     """list_file override позволяет переиспользовать конфиг для test-прохода."""
     items: list[InputItem] = []
+    stage = getattr(cfg, "stage", None)
     src_list = list_file if list_file is not None else cfg.list_file
     if src_list:
         with open(src_list, encoding="utf-8") as f:
@@ -45,12 +47,16 @@ def collect_inputs(cfg, *, list_file: str | None = None) -> list[InputItem]:
                 if not line.strip() or line.lstrip().startswith("#"):
                     continue
                 rel, labels = parse_list_line(line)
+                if stage is not None and stage_from_path(rel) != stage:
+                    continue
                 full = cfg.base_dir / rel.lstrip("/\\")
                 items.append(InputItem(rel, full, labels))
     elif cfg.input_dir and list_file is None:
         root = Path(cfg.input_dir)
         for f in sorted(root.rglob("*.pcd")):
             rel = str(f.relative_to(root))
+            if stage is not None and stage_from_path(rel) != stage:
+                continue
             items.append(InputItem(rel, f, {k: "" for k in LABEL_COLS}))
     else:
         raise ValueError("Нужен --list или --input-dir")
@@ -65,6 +71,7 @@ def collect_for(cfg, list_file: str | None) -> list[InputItem]:
         list_file=list_file if list_file is not None else cfg.list_file,
         input_dir=None if list_file is not None else cfg.input_dir,
         base_dir=cfg.base_dir, limit=cfg.limit,
+        stage=getattr(cfg, "stage", None),
     ))
 
 
