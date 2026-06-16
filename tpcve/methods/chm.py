@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from tools.autoname import build_name, default_path
-import core
+from tpcve import core
 
 NAME = "chm"
 COLUMNS = ["file", *core.LABEL_COLS, "cell_size_mm", "percentile",

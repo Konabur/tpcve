@@ -23,8 +23,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from tqdm import tqdm
 
-from geometry import _compute_one, random_downsample, sor, voxel_downsample
-from generate_cloud import load_real_cloud
+from tpcve.cloud.geometry import _compute_one, random_downsample, sor, voxel_downsample
+from tpcve.cloud.generate_cloud import load_real_cloud
 from tools.autoname import build_name, default_path
 
 

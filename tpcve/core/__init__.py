@@ -13,14 +13,14 @@ pick_median_biomass`). Сам код разнесён по фокусным мо
 """
 from __future__ import annotations
 
-from core.args import (add_common_batch_args, autoname_extra_from_args,
+from tpcve.core.args import (add_common_batch_args, autoname_extra_from_args,
                        build_analyze_parser, load_env_from_argv,
                        preprocess_config_from_args)
-from core.io import (LABEL_COLS, STAGE_TOKENS, BatchCfg, InputItem, collect_for,
+from tpcve.core.io import (LABEL_COLS, STAGE_TOKENS, BatchCfg, InputItem, collect_for,
                      collect_inputs, load_done_keys, parse_list_line,
                      pick_median_biomass, stage_from_path)
-from core.long_analyze import run_long_analyze
-from core.long_batch import (LongBatchSpec, chain_analyze, run_batch_train_test,
+from tpcve.core.long_analyze import run_long_analyze
+from tpcve.core.long_batch import (LongBatchSpec, chain_analyze, run_batch_train_test,
                              run_long_batch, simple_error_rows, standard_main)
 
 __all__ = [

@@ -18,8 +18,8 @@ import open3d as o3d
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from generate_cloud import load_real_cloud
-from geometry import random_downsample, sor, voxel_downsample
+from tpcve.cloud.generate_cloud import load_real_cloud
+from tpcve.cloud.geometry import random_downsample, sor, voxel_downsample
 from tools.autoname import build_name, default_path
 
 

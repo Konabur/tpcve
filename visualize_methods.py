@@ -32,9 +32,9 @@ from matplotlib.colors import Normalize, PowerNorm
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from core.io import pick_median_biomass, stage_from_path
-from cloud_pipeline import PreprocessConfig, preprocess_cloud
-from geometry import _layer_triangles
+from tpcve.core.io import pick_median_biomass, stage_from_path
+from tpcve.cloud.cloud_pipeline import PreprocessConfig, preprocess_cloud
+from tpcve.cloud.geometry import _layer_triangles
 
 
 # Единый print-friendly colormap: perceptually uniform, CVD-safe, читается в ч/б.

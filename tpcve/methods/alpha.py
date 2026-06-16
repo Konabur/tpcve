@@ -23,10 +23,10 @@ import numpy as np
 import open3d as o3d
 from tqdm import tqdm
 
-from cloud_pipeline import PreprocessConfig, preprocess_cloud
-from geometry import _compute_one, random_downsample, voxel_downsample
+from tpcve.cloud.cloud_pipeline import PreprocessConfig, preprocess_cloud
+from tpcve.cloud.geometry import _compute_one, random_downsample, voxel_downsample
 from tools.autoname import build_name, default_path
-import core
+from tpcve import core
 
 NAME = "alpha"
 

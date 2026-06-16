@@ -10,10 +10,10 @@ from typing import Callable, Iterable
 
 from tqdm import tqdm
 
-from cloud_pipeline import PreprocessConfig, preprocess_cloud
+from tpcve.cloud.cloud_pipeline import PreprocessConfig, preprocess_cloud
 
-from core.args import add_common_batch_args, preprocess_config_from_args
-from core.io import BatchCfg, InputItem, collect_for, load_done_keys
+from tpcve.core.args import add_common_batch_args, preprocess_config_from_args
+from tpcve.core.io import BatchCfg, InputItem, collect_for, load_done_keys
 
 
 def simple_error_rows(item: InputItem, msg: str) -> list[dict]:
@@ -98,7 +98,7 @@ def chain_analyze(mod, output_csv: Path, argv: Iterable[str] | None) -> None:
 
     Аргументы для analyze выводятся из общих batch-флагов: путь к train-CSV,
     --test-csv (если был --list-test), --plots-dir (если --plots), --top. Вызывается
-    и при прямом запуске метода (python -m methods.<name>), и диспетчером batch.py."""
+    и при прямом запуске метода (python -m tpcve.methods.<name>), и диспетчером batch.py."""
     p = argparse.ArgumentParser(add_help=False)
     add_common_batch_args(p)
     mod.add_batch_args(p)

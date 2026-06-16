@@ -7,7 +7,7 @@ from typing import Iterable
 
 from dotenv import load_dotenv
 
-from cloud_pipeline import PreprocessConfig
+from tpcve.cloud.cloud_pipeline import PreprocessConfig
 
 
 def load_env_from_argv(argv: Iterable[str] | None) -> None:

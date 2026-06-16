@@ -29,11 +29,11 @@ import open3d as o3d
 import pandas as pd
 from dotenv import load_dotenv
 
-from methods.chm import chm_volume
-from cloud_pipeline import PreprocessConfig, preprocess_cloud
-from geometry import alpha_layered
-from core.io import pick_median_biomass
-from volume_methods import voxel_volume
+from tpcve.methods.chm import chm_volume
+from tpcve.cloud.cloud_pipeline import PreprocessConfig, preprocess_cloud
+from tpcve.cloud.geometry import alpha_layered
+from tpcve.core.io import pick_median_biomass
+from tpcve.cloud.volume_methods import voxel_volume
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:

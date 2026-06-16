@@ -21,7 +21,7 @@ import os
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
-from generate_cloud import generate_full_cloud, load_cloud, save_cloud, load_real_cloud
+from tpcve.cloud.generate_cloud import generate_full_cloud, load_cloud, save_cloud, load_real_cloud
 import plotly.graph_objects as go
 
 # Предварительный парсинг для получения --env-file

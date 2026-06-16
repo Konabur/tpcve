@@ -9,15 +9,15 @@
     uv run python batch.py --method chm --list f.txt --cell-sizes 20,50 --percentiles 95
 
 Метод-специфичные флаги (--alphas, --cell-sizes, --percentiles, --layer-dz, …)
-смотри в `python -m methods.<method> --help`.
+смотри в `python -m tpcve.methods.<method> --help`.
 """
 from __future__ import annotations
 
 import argparse
 import sys
 
-from methods import METHODS, load
-import core
+from tpcve.methods import METHODS, load
+from tpcve import core
 
 
 def main(argv=None) -> int:

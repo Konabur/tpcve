@@ -4,7 +4,7 @@
     uv run python analyze.py --method chm        # автопоиск свежайшего CSV
     uv run python analyze.py --method voxel,chm --input-csv a.csv,b.csv
 
-Метод-специфичные analyze-флаги (напр. alpha --source) — в `python -m methods.<m> --help`.
+Метод-специфичные analyze-флаги (напр. alpha --source) — в `python -m tpcve.methods.<m> --help`.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from methods import METHODS, load
+from tpcve.methods import METHODS, load
 
 
 def _latest_csv(name: str) -> Path:

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from tools.autoname import build_name, default_path
-import core
+from tpcve import core
 
 NAME = "count"
 SOURCES = ("raw", "pre")
