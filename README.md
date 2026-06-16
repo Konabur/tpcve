@@ -93,6 +93,52 @@ pip install laspy
 пробелы. Альтернатива — каталог с облаками через `--input-dir` (без меток
 биомассы, для прогонов без регрессии).
 
+### Набор данных Yanco TC 2019
+
+Работа ведётся на открытом наборе данных:
+
+> Estavillo, Gonzalo; Anthony, Condon; Pan, Liyuan; Bull, Geoff; & Coe, Robert
+> (2021): *Biomass and LiDAR data from wheat and triticale plots grown at Yanco
+> (NSW) in 2019 to improve prediction of digital biomass.* v2. CSIRO. Data
+> Collection. <https://doi.org/10.25919/xv6v-6h56>
+
+Это TLS-сканы делянок пшеницы и тритикале (Yanco, NSW, 2019) с измеренной
+наземной биомассой — целевой переменной регрессии.
+
+**Как подключить:**
+
+- `--input-dir` — путь к скачанной и разархивированной папке `Yanco_TC_2019_HI-pcd`
+  (внутри — облака `.pcd`, разложенные по подпапкам дат съёмки).
+- `--list` — текстовый список делянок в формате авторов набора (`test_list.txt`,
+  `train_list.txt`): строка на облако, путь относительно папки набора + метки.
+
+```
+/20190828/Tony e-w_20190828_001/1-5-1-b.pcd 380.600000 3 1 3
+```
+
+Где первый токен — путь к `.pcd` (может содержать пробелы), затем биомасса и три
+служебных столбца (`col3..col5`).
+
+**Стадии роста.** Списки покрывают две даты съёмки, соответствующие стадиям
+развития по шкале Zadoks (см. `STAGE_TOKENS` в `tpcve/core/io.py`):
+
+| Стадия | Дата съёмки | Папка в наборе |
+|---|---|---|
+| `Z31` | 2019-08-28 | `20190828/` |
+| `Z65` | 2019-10-02 | `20191002/` |
+
+`test_list.txt` / `train_list.txt` — это разбиение делянок на test/train,
+включающее обе стадии; стадия каждой делянки определяется по дате в пути.
+
+```bash
+# регрессия по обучающему списку набора
+python batch.py --method voxel --base-dir /path/to/Yanco_TC_2019_HI-pcd \
+  --list /path/to/train_list.txt --voxel-sizes 6,7,8,10
+
+# прогон по всей разархивированной папке (без меток биомассы)
+python batch.py --method count --input-dir /path/to/Yanco_TC_2019_HI-pcd --no-analyze
+```
+
 ### Примеры
 
 ```bash
