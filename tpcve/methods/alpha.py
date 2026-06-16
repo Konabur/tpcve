@@ -63,6 +63,7 @@ class AlphaConfig:
     resume: bool
     limit: int | None
     stage: str | None = None
+    inner_progress: bool = True
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
 
 
@@ -82,6 +83,9 @@ def add_batch_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--workers", type=int,
                    default=max(1, (os.cpu_count() or 2) // 2))
+    p.add_argument("--no-inner-progress", action="store_true",
+                   help="Отключить вложенный tqdm-бар по α-shape задачам "
+                        "(полезно при не-TTY выводе, напр. на Kaggle)")
 
 
 def add_analyze_args(p: argparse.ArgumentParser) -> None:
@@ -261,6 +265,7 @@ def process_batch(cfg: AlphaConfig, *,
 
                 inner = tqdm(total=len(tasks), unit="task",
                              leave=False, dynamic_ncols=True,
+                             disable=not cfg.inner_progress,
                              desc=f"  α-shape ({item.rel_path[-25:]})")
                 if ex is None:
                     for task in tasks:
@@ -345,6 +350,7 @@ def run_batch(argv=None) -> Path:
         seed=a.seed, workers=a.workers,
         resume=a.resume, limit=a.limit,
         stage=a.stage,
+        inner_progress=not a.no_inner_progress,
         preprocess=core.preprocess_config_from_args(a),
     )
     process_batch(cfg, csv_path=output_csv, label="train")
