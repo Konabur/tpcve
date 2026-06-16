@@ -8,6 +8,9 @@ from typing import Callable
 
 LABEL_COLS = ["biomass", "col3", "col4", "col5"]
 
+# Расширения облаков — по ним отделяем путь (может содержать пробелы) от меток.
+CLOUD_EXTS = (".npz", ".las", ".laz", ".pcd", ".ply", ".xyz", ".pts", ".db3")
+
 
 @dataclass
 class InputItem:
@@ -27,13 +30,26 @@ class BatchCfg:
 
 
 def parse_list_line(line: str) -> tuple[str, dict]:
-    """`<path> <biomass> <c3> <c4> <c5>` — путь может содержать пробелы."""
+    """`<path> <biomass> [<c3> <c4> <c5>]` — путь может содержать пробелы.
+
+    Путь отделяется от меток по расширению облака (`CLOUD_EXTS`): всё до токена с
+    расширением включительно — путь, остальное — метки. `biomass` обязателен;
+    `col3..col5` опциональны (отсутствующие заполняются "").
+    """
     parts = line.strip().split()
-    if len(parts) < 5:
-        raise ValueError(f"Ожидалось >=5 токенов, получено {len(parts)}: {line!r}")
-    *path_parts, biomass, c3, c4, c5 = parts
-    rel_path = " ".join(path_parts)
-    return rel_path, {"biomass": biomass, "col3": c3, "col4": c4, "col5": c5}
+    ext_idx = next((i for i, t in enumerate(parts)
+                    if t.lower().endswith(CLOUD_EXTS)), None)
+    if ext_idx is None:
+        raise ValueError(
+            f"Не найден путь к облаку ({'/'.join(CLOUD_EXTS)}): {line!r}")
+    rel_path = " ".join(parts[:ext_idx + 1])
+    labels = parts[ext_idx + 1:]
+    if not labels:
+        raise ValueError(f"Отсутствует biomass после пути: {line!r}")
+    biomass, *extra = labels
+    extra = (extra + ["", "", ""])[:3]
+    return rel_path, {"biomass": biomass, "col3": extra[0],
+                      "col4": extra[1], "col5": extra[2]}
 
 
 def collect_inputs(cfg, *, list_file: str | None = None) -> list[InputItem]:
