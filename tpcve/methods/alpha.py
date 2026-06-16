@@ -62,6 +62,7 @@ class AlphaConfig:
     workers: int
     resume: bool
     limit: int | None
+    stage: str | None = None
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
 
 
@@ -343,6 +344,7 @@ def run_batch(argv=None) -> Path:
         with_random=a.with_random,
         seed=a.seed, workers=a.workers,
         resume=a.resume, limit=a.limit,
+        stage=a.stage,
         preprocess=core.preprocess_config_from_args(a),
     )
     process_batch(cfg, csv_path=output_csv, label="train")
