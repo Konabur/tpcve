@@ -9,7 +9,7 @@
     uv run python batch.py --method chm --list f.txt --cell-sizes 20,50 --percentiles 95
 
 Метод-специфичные флаги (--alphas, --cell-sizes, --percentiles, --layer-dz, …)
-смотри в `python -m tpcve.methods.<method> --help`.
+смотри в `batch.py --method <method> --help`.
 """
 from __future__ import annotations
 
@@ -20,13 +20,46 @@ from tpcve.methods import METHODS, load
 from tpcve import core
 
 
-def main(argv=None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
+def _build_pre_parser() -> argparse.ArgumentParser:
     pre = argparse.ArgumentParser(
         description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False)  # help обрабатываем вручную: см. main()
+    pre.add_argument("-h", "--help", action="store_true")
     pre.add_argument("--method", help=f"CSV-список из {sorted(METHODS)}")
-    pre_args, rest = pre.parse_known_args(argv)  # --help здесь покажет общую справку
+    return pre
+
+
+def _print_method_help(name: str) -> None:
+    """Полная справка метода: общие batch-флаги + метод-специфичные."""
+    mod = load(name)
+    p = argparse.ArgumentParser(
+        prog=f"batch.py --method {name}",
+        description=getattr(mod, "__doc__", None),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    core.add_common_batch_args(p)
+    mod.add_batch_args(p)
+    mod.add_analyze_args(p)
+    p.print_help()
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    pre = _build_pre_parser()
+    pre_args, rest = pre.parse_known_args(argv)
+
+    if pre_args.help:
+        # `--method <m> --help` -> справка метода(ов); без метода -> общая справка
+        names = [m.strip() for m in (pre_args.method or "").split(",")
+                 if m.strip() and m.strip() in METHODS]
+        if names:
+            for name in names:
+                _print_method_help(name)
+                print()
+        else:
+            pre.print_help()
+        return 0
+
     if not pre_args.method:
         pre.error(f"--method обязателен. Доступно: {sorted(METHODS)}")
     names = [m.strip() for m in pre_args.method.split(",") if m.strip()]
