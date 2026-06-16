@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Инспектор облака точек - показывает метаданные и статистику.
-Использование: python inspect_cloud.py <путь_к_файлу.pcd>
+Использование: python scripts/inspect_cloud.py <путь_к_файлу.pcd>
 """
 
 import sys
@@ -100,7 +100,7 @@ def inspect_cloud(filepath):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Использование: python inspect_cloud.py <путь_к_файлу.pcd>")
+        print("Использование: python scripts/inspect_cloud.py <путь_к_файлу.pcd>")
         sys.exit(1)
 
     inspect_cloud(sys.argv[1])
