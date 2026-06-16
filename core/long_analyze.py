@@ -24,7 +24,6 @@ def run_long_analyze(args, *, value_cols: list[str], group_cols: list[str],
     - `label_fn(meta, vc) -> str`: человекочитаемая метка группы (колонка `method`).
     - `prep_df(df)`: опц. in-place подготовка (напр. alpha: fillna layer_dz_mm).
     """
-    import numpy as np
     import pandas as pd
 
     from tools.autoname import default_path

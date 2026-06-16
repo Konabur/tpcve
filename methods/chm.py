@@ -16,10 +16,10 @@ from pathlib import Path
 import numpy as np
 
 from tools.autoname import build_name, default_path
-import core as common
+import core
 
 NAME = "chm"
-COLUMNS = ["file", *common.LABEL_COLS, "cell_size_mm", "percentile",
+COLUMNS = ["file", *core.LABEL_COLS, "cell_size_mm", "percentile",
            "n_cells", "V_chm", "error"]
 
 
@@ -125,9 +125,9 @@ def _make_compute_rows(cell_sizes_mm, percentiles):
 
 
 def run_batch(argv=None) -> Path:
-    common.load_env_from_argv(argv)
+    core.load_env_from_argv(argv)
     p = argparse.ArgumentParser(description=__doc__)
-    common.add_common_batch_args(p)
+    core.add_common_batch_args(p)
     add_batch_args(p)
     a, _ = p.parse_known_args(argv)  # known_args: при --method a,b чужие флаги игнор
 
@@ -145,15 +145,15 @@ def run_batch(argv=None) -> Path:
         name = build_name(source=a.list_file or a.input_dir,
                           source_kind="list" if a.list_file else "dir",
                           cell_sizes_mm=cell_sizes, percentiles=percentiles,
-                          extra=common.autoname_extra_from_args(a))
+                          extra=core.autoname_extra_from_args(a))
         output_csv = default_path("volume_csv", name, subfolder=NAME)
     else:
         output_csv = Path(a.output_csv)
 
-    spec = common.LongBatchSpec(columns=COLUMNS, row_key=_row_key,
-                                error_rows=common.simple_error_rows,
+    spec = core.LongBatchSpec(columns=COLUMNS, row_key=_row_key,
+                                error_rows=core.simple_error_rows,
                                 compute_rows=_make_compute_rows(cell_sizes, percentiles))
-    return common.run_batch_train_test(spec, a, output_csv)
+    return core.run_batch_train_test(spec, a, output_csv)
 
 
 def _label(meta, vc):
@@ -161,17 +161,17 @@ def _label(meta, vc):
 
 
 def run_analyze(argv=None) -> int:
-    p = common.build_analyze_parser(__doc__)
+    p = core.build_analyze_parser(__doc__)
     add_analyze_args(p)
     args, _ = p.parse_known_args(argv)
-    return common.run_long_analyze(
+    return core.run_long_analyze(
         args, value_cols=["V_chm"],
         group_cols=["cell_size_mm", "percentile"], label_fn=_label,
         subfolder=NAME)
 
 
 def main(argv=None) -> int:
-    return common.standard_main(sys.modules[__name__], argv)
+    return core.standard_main(sys.modules[__name__], argv)
 
 
 if __name__ == "__main__":

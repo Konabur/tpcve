@@ -23,15 +23,15 @@ import numpy as np
 import open3d as o3d
 from tqdm import tqdm
 
-from cloud_pipeline import PreprocessConfig
+from cloud_pipeline import PreprocessConfig, preprocess_cloud
 from geometry import _compute_one, random_downsample, voxel_downsample
 from tools.autoname import build_name, default_path
-import core as common
+import core
 
 NAME = "alpha"
 
 BASE_COLUMNS = [
-    "file", *common.LABEL_COLS,
+    "file", *core.LABEL_COLS,
     "voxel_mm",
     "alpha", "mode", "layer_dz_mm",
     "n_voxel", "V_voxel",
@@ -96,7 +96,7 @@ def auto_voxel_mm(points: np.ndarray) -> float:
     return float(nn.mean()) * 1000
 
 
-def build_tasks(item: common.InputItem, points: np.ndarray, cfg: AlphaConfig,
+def build_tasks(item: core.InputItem, points: np.ndarray, cfg: AlphaConfig,
                 done_keys: set[str] | None = None
                 ) -> tuple[list[tuple], dict]:
     """Возвращает (tasks_for_pool, rows). Layered: один таск на (size, dz, kind)
@@ -178,17 +178,17 @@ def _row_key(row: dict) -> str:
 
 
 def process_batch(cfg: AlphaConfig, *,
-                  items: list[common.InputItem] | None = None,
+                  items: list[core.InputItem] | None = None,
                   csv_path: Path | None = None,
                   label: str = "train") -> int:
     if items is None:
-        items = common.collect_for(cfg, None)
+        items = core.collect_for(cfg, None)
     if csv_path is None:
         csv_path = cfg.output_csv
     print(f"[{label}] файлов на входе: {len(items)} -> {csv_path}")
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    done_keys = common.load_done_keys(csv_path, _row_key) if cfg.resume else set()
+    done_keys = core.load_done_keys(csv_path, _row_key) if cfg.resume else set()
     file_exists = csv_path.exists()
     mode = "a" if (cfg.resume and file_exists) else "w"
 
@@ -215,7 +215,6 @@ def process_batch(cfg: AlphaConfig, *,
                     continue
 
                 try:
-                    from cloud_pipeline import preprocess_cloud
                     res = preprocess_cloud(str(item.full_path), cfg.preprocess)
                     pts = res.vegetation
                     if len(pts) == 0:
@@ -299,9 +298,9 @@ def process_batch(cfg: AlphaConfig, *,
 
 
 def run_batch(argv=None) -> Path:
-    common.load_env_from_argv(argv)
+    core.load_env_from_argv(argv)
     p = argparse.ArgumentParser(description=__doc__)
-    common.add_common_batch_args(p)
+    core.add_common_batch_args(p)
     add_batch_args(p)
     a, _ = p.parse_known_args(argv)  # known_args: при --method a,b чужие флаги игнор
 
@@ -318,7 +317,7 @@ def run_batch(argv=None) -> Path:
     layered = bool(layer_dz_list)
 
     if a.output_csv is None:
-        extra = common.autoname_extra_from_args(a)
+        extra = core.autoname_extra_from_args(a)
         if a.with_random:
             extra["rand"] = True
         name = build_name(
@@ -344,19 +343,19 @@ def run_batch(argv=None) -> Path:
         with_random=a.with_random,
         seed=a.seed, workers=a.workers,
         resume=a.resume, limit=a.limit,
-        preprocess=common.preprocess_config_from_args(a),
+        preprocess=core.preprocess_config_from_args(a),
     )
     process_batch(cfg, csv_path=output_csv, label="train")
     if a.list_test:
         test_csv = output_csv.with_name(output_csv.stem + "_test"
                                         + output_csv.suffix)
-        items_test = common.collect_for(cfg, a.list_test)
+        items_test = core.collect_for(cfg, a.list_test)
         process_batch(cfg, items=items_test, csv_path=test_csv, label="test")
     return output_csv
 
 
 def run_analyze(argv=None) -> int:
-    p = common.build_analyze_parser(__doc__)
+    p = core.build_analyze_parser(__doc__)
     add_analyze_args(p)
     args, _ = p.parse_known_args(argv)  # known_args: терпим к чужим флагам при мульти-методе
 
@@ -372,7 +371,7 @@ def run_analyze(argv=None) -> int:
         return (f"v{float(meta['voxel_mm']):g}_a{float(meta['alpha']):g}_"
                 f"{mode}{suffix}")
 
-    return common.run_long_analyze(
+    return core.run_long_analyze(
         args, value_cols=value_cols,
         group_cols=["voxel_mm", "alpha", "mode", "layer_dz_mm"],
         label_fn=label_fn, prep_df=prep_df,
@@ -380,7 +379,7 @@ def run_analyze(argv=None) -> int:
 
 
 def main(argv=None) -> int:
-    return common.standard_main(sys.modules[__name__], argv)
+    return core.standard_main(sys.modules[__name__], argv)
 
 
 if __name__ == "__main__":

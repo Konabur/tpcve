@@ -17,7 +17,7 @@ import argparse
 import sys
 
 from methods import METHODS, load
-import core as common
+import core
 
 
 def main(argv=None) -> int:
@@ -40,7 +40,7 @@ def main(argv=None) -> int:
         mod = load(name)
         print(f"\n=== batch: {name} ===")
         csv_path = mod.run_batch(rest)
-        common.chain_analyze(mod, csv_path, rest)
+        core.chain_analyze(mod, csv_path, rest)
     return 0
 
 

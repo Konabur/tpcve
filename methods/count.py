@@ -10,11 +10,11 @@ import sys
 from pathlib import Path
 
 from tools.autoname import build_name, default_path
-import core as common
+import core
 
 NAME = "count"
 SOURCES = ("raw", "pre")
-COLUMNS = ["file", *common.LABEL_COLS, "source", "n_points", "error"]
+COLUMNS = ["file", *core.LABEL_COLS, "source", "n_points", "error"]
 
 
 def add_batch_args(p: argparse.ArgumentParser) -> None:
@@ -29,7 +29,7 @@ def _row_key(row: dict) -> str:
     return f"{row['file']}|{row['source']}"
 
 
-def _error_rows(item: common.InputItem, msg: str) -> list[dict]:
+def _error_rows(item: core.InputItem, msg: str) -> list[dict]:
     return [{"file": item.rel_path, **item.labels, "source": s,
              "n_points": "", "error": msg} for s in SOURCES]
 
@@ -51,36 +51,36 @@ def _compute_rows(item, res, done_keys) -> list[dict]:
 
 
 def run_batch(argv=None) -> Path:
-    common.load_env_from_argv(argv)
+    core.load_env_from_argv(argv)
     p = argparse.ArgumentParser(description=__doc__)
-    common.add_common_batch_args(p)
+    core.add_common_batch_args(p)
     add_batch_args(p)
     a, _ = p.parse_known_args(argv)  # known_args: при --method a,b чужие флаги игнор
 
     if a.output_csv is None:
         name = build_name(source=a.list_file or a.input_dir,
                           source_kind="list" if a.list_file else "dir",
-                          extra=common.autoname_extra_from_args(a))
+                          extra=core.autoname_extra_from_args(a))
         output_csv = default_path("volume_csv", name, subfolder=NAME)
     else:
         output_csv = Path(a.output_csv)
 
-    spec = common.LongBatchSpec(columns=COLUMNS, row_key=_row_key,
+    spec = core.LongBatchSpec(columns=COLUMNS, row_key=_row_key,
                                 error_rows=_error_rows, compute_rows=_compute_rows)
-    return common.run_batch_train_test(spec, a, output_csv)
+    return core.run_batch_train_test(spec, a, output_csv)
 
 
 def run_analyze(argv=None) -> int:
-    p = common.build_analyze_parser(__doc__)
+    p = core.build_analyze_parser(__doc__)
     add_analyze_args(p)
     args, _ = p.parse_known_args(argv)
-    return common.run_long_analyze(args, value_cols=["n_points"],
+    return core.run_long_analyze(args, value_cols=["n_points"],
                                    group_cols=["source"], label_fn=_label,
                                    subfolder=NAME)
 
 
 def main(argv=None) -> int:
-    return common.standard_main(sys.modules[__name__], argv)
+    return core.standard_main(sys.modules[__name__], argv)
 
 
 if __name__ == "__main__":
