@@ -26,7 +26,7 @@ from tqdm import tqdm
 from cloud_pipeline import PreprocessConfig
 from geometry import _compute_one, random_downsample, voxel_downsample
 from tools.autoname import build_name, default_path
-from methods import _common as common
+import core as common
 
 NAME = "alpha"
 

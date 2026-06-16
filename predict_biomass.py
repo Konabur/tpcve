@@ -32,7 +32,7 @@ from dotenv import load_dotenv
 from methods.chm import chm_volume
 from cloud_pipeline import PreprocessConfig, preprocess_cloud
 from geometry import alpha_layered
-from methods._common import pick_median_biomass
+from core.io import pick_median_biomass
 from volume_methods import voxel_volume
 
 
@@ -50,7 +50,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--env-file", default=None)
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--list", dest="list_file",
-                     help="Список plot'ов (формат methods._common.parse_list_line); "
+                     help="Список plot'ов (формат core.io.parse_list_line); "
                           "выбирается медианное по биомассе облако")
     src.add_argument("--cloud", dest="cloud_file",
                      help="Путь к одному облаку (без GT биомассы)")

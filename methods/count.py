@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from tools.autoname import build_name, default_path
-from methods import _common as common
+import core as common
 
 NAME = "count"
 SOURCES = ("raw", "pre")

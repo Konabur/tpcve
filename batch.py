@@ -17,7 +17,7 @@ import argparse
 import sys
 
 from methods import METHODS, load
-from methods import _common as common
+import core as common
 
 
 def main(argv=None) -> int:

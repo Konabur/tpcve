@@ -10,7 +10,7 @@ from pathlib import Path
 
 from tools.autoname import build_name, default_path
 from volume_methods import DEFAULT_VOXEL_SIZES, voxel_volume
-from methods import _common as common
+import core as common
 
 NAME = "voxel"
 COLUMNS = ["file", *common.LABEL_COLS, "voxel_mm", "n_vegetation", "V_voxel", "error"]

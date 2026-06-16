@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from tools.autoname import build_name, default_path
-from methods import _common as common
+import core as common
 
 NAME = "chm"
 COLUMNS = ["file", *common.LABEL_COLS, "cell_size_mm", "percentile",

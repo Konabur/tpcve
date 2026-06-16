@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from tools.autoname import build_name, default_path
-from methods import _common as common
+import core as common
 
 NAME = "percentile"
 COLUMNS = ["file", *common.LABEL_COLS, "percentile", "n_veg", "h_p", "error"]
