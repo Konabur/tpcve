@@ -32,9 +32,9 @@ from matplotlib.colors import Normalize, PowerNorm
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from batch_process import parse_list_line
-from cloud_pipeline import PreprocessConfig, preprocess_cloud
-from downsample_alpha_compare import _layer_triangles
+from tpcve.core.io import pick_median_biomass, stage_from_path
+from tpcve.cloud.cloud_pipeline import PreprocessConfig, preprocess_cloud
+from tpcve.cloud.geometry import _layer_triangles
 
 
 # Единый print-friendly colormap: perceptually uniform, CVD-safe, читается в ч/б.
@@ -107,45 +107,6 @@ def parse_args(argv: Iterable[str] | None = None):
     p.add_argument("--dpi", type=int, default=150)
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
-
-
-# -----------------------------------------------------------------------------
-# Выбор облака
-
-STAGE_TOKENS = {"Z31": "0828", "Z65": "1002"}
-
-
-def stage_from_path(path: str) -> str | None:
-    for stage, tok in STAGE_TOKENS.items():
-        if tok in path:
-            return stage
-    return None
-
-
-def pick_median_biomass(list_path: str, base_dir: Path,
-                        stage: str | None = None
-                        ) -> tuple[Path, float, str | None]:
-    rows: list[tuple[Path, float, str | None]] = []
-    with open(list_path, encoding="utf-8") as f:
-        for line in f:
-            if not line.strip() or line.lstrip().startswith("#"):
-                continue
-            try:
-                rel, labels = parse_list_line(line)
-                bm = float(labels["biomass"])
-            except (ValueError, KeyError):
-                continue
-            st = stage_from_path(rel)
-            if stage is not None and st != stage:
-                continue
-            rows.append((base_dir / rel.lstrip("/\\"), bm, st))
-    if not rows:
-        msg = f"В {list_path} не нашлось валидных строк с биомассой"
-        if stage is not None:
-            msg += f" для стадии {stage} (подстрока '{STAGE_TOKENS[stage]}')"
-        raise SystemExit(msg)
-    rows.sort(key=lambda r: r[1])
-    return rows[len(rows) // 2]
 
 
 # -----------------------------------------------------------------------------

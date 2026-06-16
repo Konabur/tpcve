@@ -1,4 +1,4 @@
-"""Bayesian-оптимизатор R² для batch_process / batch_alpha / batch_chm.
+"""Bayesian-оптимизатор R² для методов voxel / alpha / chm (через batch.py).
 
 Для выбранного метода ищет натуральные параметры в заданных пользователем
 границах через Optuna TPE и максимизирует max(linear_r2, power_r2, huber_r2)
@@ -71,32 +71,24 @@ def _max_r2(x: np.ndarray, y: np.ndarray) -> float:
     return float(max(r2s)) if r2s else float("-inf")
 
 
-_NON_VOXEL_COLS = {"file", "biomass", "col3", "col4", "col5",
-                   "n_input", "n_after_sor", "n_vegetation", "error"}
-
-
 def _eval_voxel(params: dict, list_file: str, base_dir: str,
                 trial_csv: Path, extra_argv: list[str]) -> float:
-    from batch_process import main as batch_main
-    argv = ["--list", list_file, "--base-dir", base_dir,
+    from batch import main as batch_main
+    argv = ["--method", "voxel", "--list", list_file, "--base-dir", base_dir,
             "--voxel-sizes", str(params["voxel_size"]),
-            "--methods", "voxel",
             "--output-csv", str(trial_csv),
             "--no-analyze", "--no-plots", *extra_argv]
     batch_main(argv)
     df = pd.read_csv(trial_csv)
-    vol_cols = [c for c in df.columns if c not in _NON_VOXEL_COLS]
-    if not vol_cols:
-        return float("-inf")
-    x = pd.to_numeric(df[vol_cols[0]], errors="coerce").to_numpy()
+    x = pd.to_numeric(df["V_voxel"], errors="coerce").to_numpy()
     y = pd.to_numeric(df["biomass"], errors="coerce").to_numpy()
     return _max_r2(x, y)
 
 
 def _eval_alpha(params: dict, list_file: str, base_dir: str,
                 trial_csv: Path, extra_argv: list[str]) -> float:
-    from batch_alpha import main as batch_main
-    argv = ["--list", list_file, "--base-dir", base_dir,
+    from batch import main as batch_main
+    argv = ["--method", "alpha", "--list", list_file, "--base-dir", base_dir,
             "--voxel-sizes", str(params["voxel_size"]),
             "--alphas", str(params["alpha"]),
             "--layer-dz", str(params["layer_dz"]),
@@ -111,8 +103,8 @@ def _eval_alpha(params: dict, list_file: str, base_dir: str,
 
 def _eval_chm(params: dict, list_file: str, base_dir: str,
               trial_csv: Path, extra_argv: list[str]) -> float:
-    from batch_chm import main as batch_main
-    argv = ["--list", list_file, "--base-dir", base_dir,
+    from batch import main as batch_main
+    argv = ["--method", "chm", "--list", list_file, "--base-dir", base_dir,
             "--cell-sizes", str(params["cell_size"]),
             "--percentiles", str(params["percentile"]),
             "--output-csv", str(trial_csv),

@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import open3d as o3d
 
-from generate_cloud import load_cloud, load_real_cloud
+from tpcve.cloud.generate_cloud import load_cloud, load_real_cloud
 
 
 @dataclass

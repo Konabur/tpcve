@@ -13,7 +13,7 @@ R²), парсит из неё параметры метода и коэффиц
         --voxel-csv  results/regression_csv/voxel/<...>.csv \\
         --alpha-csv  results/regression_csv/alpha/<...>.csv \\
         --chm-csv    results/regression_csv/chm/<...>.csv \\
-        --height-csv results/regression_csv/height/<...>.csv \\
+        --height-csv results/regression_csv/percentile/<...>.csv \\
         --count-csv  results/regression_csv/count/<...>.csv
 """
 from __future__ import annotations
@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -30,11 +29,11 @@ import open3d as o3d
 import pandas as pd
 from dotenv import load_dotenv
 
-from batch_chm import chm_volume
-from cloud_pipeline import PreprocessConfig, preprocess_cloud
-from downsample_alpha_compare import alpha_layered
-from visualize_methods import pick_median_biomass
-from volume_methods import voxel_volume
+from tpcve.methods.chm import chm_volume
+from tpcve.cloud.cloud_pipeline import PreprocessConfig, preprocess_cloud
+from tpcve.cloud.geometry import alpha_layered
+from tpcve.core.io import pick_median_biomass
+from tpcve.cloud.volume_methods import voxel_volume
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
@@ -51,7 +50,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--env-file", default=None)
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--list", dest="list_file",
-                     help="Список plot'ов (формат batch_process.parse_list_line); "
+                     help="Список plot'ов (формат core.io.parse_list_line); "
                           "выбирается медианное по биомассе облако")
     src.add_argument("--cloud", dest="cloud_file",
                      help="Путь к одному облаку (без GT биомассы)")
@@ -103,15 +102,9 @@ def _build_predict(row: pd.Series) -> tuple[str, Callable[[float], float], str]:
     return model, predict, coefs
 
 
-_VOXEL_RE = re.compile(r"voxel_([0-9_]+)mm")
-
-
 def _load_voxel(csv_path: str) -> dict:
     row = pd.read_csv(csv_path).iloc[0]
-    m = _VOXEL_RE.match(str(row["method"]))
-    if not m:
-        raise ValueError(f"voxel CSV: не распарсилась колонка method={row['method']!r}")
-    voxel_mm = float(m.group(1).replace("_", "."))
+    voxel_mm = float(row["voxel_mm"])
     model, predict, coefs = _build_predict(row)
     train_r2 = float(row[f"{model}_r2"])
     return {
