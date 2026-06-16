@@ -7,7 +7,7 @@
 alpha влияют на форму/объём.
 
 Использование:
-    uv run python downsample_alpha_compare.py data/Yanco-1-1-1-b/1-1-1-b.pcd \\
+    uv run python experiments/downsample_alpha_compare.py data/Yanco-1-1-1-b/1-1-1-b.pcd \\
         --auto --alphas 5 10 20
 """
 from __future__ import annotations

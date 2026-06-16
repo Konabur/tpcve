@@ -6,7 +6,7 @@
   3) сохраняет 3D-визуализацию (Plotly) в HTML — два облака бок-о-бок.
 
 Использование:
-    uv run python downsample_compare.py data/Yanco-1-1-1-b/1-1-1-b.pcd 5 10 20
+    uv run python experiments/downsample_compare.py data/Yanco-1-1-1-b/1-1-1-b.pcd 5 10 20
 """
 from __future__ import annotations
 

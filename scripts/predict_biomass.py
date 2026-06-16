@@ -8,7 +8,7 @@ R²), парсит из неё параметры метода и коэффиц
 с абс./отн. ошибкой.
 
 Пример:
-    uv run python predict_biomass.py \\
+    uv run python scripts/predict_biomass.py \\
         --list data/some_list.txt \\
         --voxel-csv  results/regression_csv/voxel/<...>.csv \\
         --alpha-csv  results/regression_csv/alpha/<...>.csv \\

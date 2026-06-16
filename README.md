@@ -28,6 +28,8 @@ tpcve/
   core/     фреймворк batch/analyze (io, аргументы, long-batch/analyze)
   methods/  реестр + плагины признаков (voxel/alpha/chm/count/percentile)
 tools/      утилиты (autoname, regression, optimize_r2)
+scripts/    утилиты и демо (inspect_cloud, predict_biomass, visualize_methods)
+experiments/ разовые прогоны (occlusion, voxel_size_sweep, downsample-сравнения)
 data/       наборы данных с per-dataset settings.env
 ```
 
@@ -45,7 +47,7 @@ uv sync
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # .venv\Scripts\activate   # Windows
-pip install -r requirements.txt
+pip install -e .
 ```
 
 Для работы с LAS/LAZ:
