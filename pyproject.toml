@@ -3,6 +3,8 @@ name = "tls-volume-estimation"
 version = "0.2.0"
 description = "TLS point cloud volume estimation methods"
 readme = "README.md"
+license = "MIT"
+authors = [{ name = "Konabur (Shaikhiev D.)", email = "shaikhiev2014@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = [
     "alphashape>=1.3.1",
