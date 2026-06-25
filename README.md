@@ -37,23 +37,23 @@ datasets/   субмодуль с датасетом Yanco TC 2019
 
 Варианты клонирования:
 
-```bash
-# только код (легко, ~2 МБ)
-git clone https://github.com/Konabur/tpcve.git
-cd tpcve
-```
-
 код + датасет сразу
 ```bash
 git clone --recurse-submodules https://github.com/Konabur/tpcve.git
 cd tpcve
 ```
 
+```bash
+# только код (легко, ~2 МБ)
+git clone https://github.com/Konabur/tpcve.git
+cd tpcve
+```
 
 ### uv (рекомендуется)
 
 ```bash
 uv sync
+cp -n .env.example .env     # создать .env с настройками датасета по умолчанию
 ```
 
 ### venv + pip
@@ -63,6 +63,7 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # .venv\Scripts\activate   # Windows
 pip install -e .
+cp -n .env.example .env     # создать .env с настройками датасета по умолчанию
 ```
 
 Для работы с LAS/LAZ:
@@ -172,7 +173,15 @@ python batch.py --method count \
   --no-analyze
 ```
 
-Или через `.env` (см. `.env.example`).
+Или через `.env` (скопировать `.env.example` → `.env` и раскомментировать):
+
+```bash
+TPCVE_LIST=datasets/yanco-2019-wheat-pcd/data/train_list.txt
+TPCVE_LIST_TEST=datasets/yanco-2019-wheat-pcd/data/test_list.txt
+TPCVE_BASE_DIR=datasets/yanco-2019-wheat-pcd/data/Yanco_TC_2019_HI-pcd
+```
+
+После этого `batch.py --method count` сам подхватит train list, а `--list-test` — test list.
 
 **Стадии роста.** Списки покрывают две даты съёмки, соответствующие стадиям
 развития по шкале Zadoks (см. `STAGE_TOKENS` в `tpcve/core/io.py`):
@@ -249,9 +258,11 @@ python analyze.py --method chm --input-csv results/volume_csv/chm/x.csv
 загружается автоматически (см. `.env.example`); CLI-аргументы имеют приоритет.
 
 ```bash
-TPCVE_UNITS=mm
+TPCVE_LIST=datasets/yanco-2019-wheat-pcd/data/train_list.txt
+TPCVE_LIST_TEST=datasets/yanco-2019-wheat-pcd/data/test_list.txt
 TPCVE_BASE_DIR=datasets/yanco-2019-wheat-pcd/data/Yanco_TC_2019_HI-pcd
 TPCVE_STAGE=Z65
+TPCVE_UNITS=mm
 TPCVE_FLIP_Z=false
 TPCVE_DOWNSAMPLE=0
 TPCVE_SOR_STD_RATIO=2.0

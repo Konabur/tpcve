@@ -171,8 +171,8 @@ def _load_alpha(csv_path: str) -> dict:
     train_r2 = float(row[f"{model}_r2"])
     return {
         "kind": "alpha",
-        "params_str": (f"a={alpha:g} dz={dz_mm:g}mm"
-                       + (f" pre-vox={voxel_mm:g}mm" if voxel_mm > 0 else "")),
+        "params_str": ((f"pre-vox={voxel_mm:g}mm " if voxel_mm > 0 else "")
+                       + f"a={alpha:g} dz={dz_mm:g}mm"),
         "params": {"voxel_mm": voxel_mm, "alpha": alpha, "dz_m": dz_mm / 1000.0},
         "model": model, "predict": predict, "coefs": coefs,
         "train_r2": train_r2,

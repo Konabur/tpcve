@@ -25,10 +25,12 @@ def add_common_batch_args(p: argparse.ArgumentParser, *,
                           sor_default: float = 2.0) -> None:
     """Общие для всех batch-методов флаги (имена и дефолты как сейчас)."""
     p.add_argument("--env-file", default=None)
-    src = p.add_mutually_exclusive_group(required=True)
-    src.add_argument("--list", dest="list_file")
+    src = p.add_mutually_exclusive_group()
+    src.add_argument("--list", dest="list_file",
+                     default=os.getenv("TPCVE_LIST"))
     src.add_argument("--input-dir")
-    p.add_argument("--list-test", default=None)
+    p.add_argument("--list-test",
+                   default=os.getenv("TPCVE_LIST_TEST"))
     p.add_argument("--stage", default=os.getenv("TPCVE_STAGE") or None,
                    choices=list(STAGE_TOKENS),
                    help="Брать только облака этой стадии роста (по дате в пути)")
