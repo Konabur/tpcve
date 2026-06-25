@@ -1,0 +1,3 @@
+[submodule "datasets/yanco-2019-wheat-pcd"]
+	path = datasets/yanco-2019-wheat-pcd
+	url = https://github.com/Konabur/yanco-2019-wheat-pcd.git

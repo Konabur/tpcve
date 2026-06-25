@@ -30,9 +30,30 @@ tools/      утилиты (autoname, regression, optimize_r2)
 scripts/    утилиты и демо (inspect_cloud, predict_biomass, visualize_methods)
 experiments/ разовые прогоны (occlusion, voxel_size_sweep, downsample-сравнения)
 data/       наборы данных с per-dataset settings.env
+datasets/   субмодуль с датасетом Yanco TC 2019
 ```
 
 ## Установка
+
+Варианты клонирования:
+
+```bash
+# только код (легко, ~2 МБ)
+git clone https://github.com/Konabur/tpcve.git
+cd tpcve
+```
+
+код + датасет сразу
+```bash
+git clone --recurse-submodules https://github.com/Konabur/tpcve.git
+cd tpcve
+```
+
+Если клонировали без датасета, подтянуть его позже:
+
+```bash
+git submodule update --init --recursive
+```
 
 ### С uv (рекомендуется)
 
@@ -82,18 +103,34 @@ pip install laspy
 
 Метод-специфичные флаги: `python -m tpcve.methods.<method> --help`.
 
-### Входные данные
+### Входные данные: --list / --base-dir / --input-dir
 
-Список облаков с метками — текстовый файл (`--list`), строка на облако в формате:
+Облака подаются двумя способами:
+
+**1. `--list <файл>` + `--base-dir <папка>` — c метками биомассы (для регрессии).**
+
+В list-файле каждая строка — облако:
 
 ```
-<путь> <biomass>
+<относительный-путь> <biomass> [col3 col4 col5]
 ```
 
-Путь относительный (от `--base-dir`, по умолчанию `data/`) и может содержать
-пробелы — он отделяется от метки по расширению облака (`.pcd`, `.las`, …). Любые
-лишние токены после `biomass` игнорируются. Альтернатива — каталог с облаками
-через `--input-dir` (без меток биомассы, для прогонов без регрессии).
+Путь может содержать пробелы — он отделяется от меток по расширению (`.pcd`,
+`.las`, …). Необязательные `col3..col5` игнорируются. `--base-dir` — корень, от
+которого разрешается относительный путь из list-файла.
+
+```
+# train_list.txt
+/20190828/Tony e-w_20190828_001/1-5-1-b.pcd 380.600000 3 1 3
+```
+
+→ `--base-dir <папка> --list train_list.txt` → загрузится
+`<папка>/20190828/Tony e-w_20190828_001/1-5-1-b.pcd`.
+
+**2. `--input-dir <папка>` — без меток (только подсчёт признаков).**
+
+Рекурсивный поиск всех `.pcd` в папке. Биомасса не указывается — регрессия
+невозможна, нужно гасить `--no-analyze`.
 
 ### Набор данных Yanco TC 2019
 
@@ -109,18 +146,32 @@ pip install laspy
 
 **Как подключить:**
 
-- `--input-dir` — путь к скачанной и разархивированной папке `Yanco_TC_2019_HI-pcd`
-  (внутри — облака `.pcd`, разложенные по подпапкам дат съёмки).
-- `--list` — текстовый список делянок в формате авторов набора (`test_list.txt`,
-  `train_list.txt`): строка на облако, путь относительно папки набора + метки.
+Субмодуль уже проинициализирован на шаге установки. Структура внутри субмодуля:
 
 ```
-/20190828/Tony e-w_20190828_001/1-5-1-b.pcd 380.600000 3 1 3
+datasets/yanco-2019-wheat-pcd/
+  data/
+    Yanco_TC_2019_HI-pcd/     # папки 20190828/ и 20191002/ с .pcd
+    train_list.txt             # --list для train
+    test_list.txt              # --list для test
+  metadata/
 ```
 
-Где первый токен — путь к `.pcd` (может содержать пробелы), затем биомасса.
-Идущие в файлах набора после биомассы числа — служебные поля Yanco, парсером
-игнорируются.
+Примеры использования (см. описание `--list`/`--base-dir`/`--input-dir` выше):
+
+```bash
+# регрессия: --list + --base-dir
+python batch.py --method voxel \
+  --base-dir datasets/yanco-2019-wheat-pcd/data/Yanco_TC_2019_HI-pcd \
+  --list datasets/yanco-2019-wheat-pcd/data/train_list.txt
+
+# без меток: --input-dir
+python batch.py --method count \
+  --input-dir datasets/yanco-2019-wheat-pcd/data/Yanco_TC_2019_HI-pcd \
+  --no-analyze
+```
+
+Или через `.env` (см. `.env.example`).
 
 **Стадии роста.** Списки покрывают две даты съёмки, соответствующие стадиям
 развития по шкале Zadoks (см. `STAGE_TOKENS` в `tpcve/core/io.py`):
@@ -141,15 +192,21 @@ pip install laspy
 
 ```bash
 # регрессия по обучающему списку набора (обе стадии)
-python batch.py --method voxel --base-dir /path/to/Yanco_TC_2019_HI-pcd \
-  --list /path/to/train_list.txt --voxel-sizes 6,7,8,10
+python batch.py --method voxel \
+  --base-dir datasets/yanco-2019-wheat-pcd/data/Yanco_TC_2019_HI-pcd \
+  --list datasets/yanco-2019-wheat-pcd/data/train_list.txt \
+  --voxel-sizes 6,7,8,10
 
 # только стадия Z65 (съёмка 2019-10-02)
-python batch.py --method voxel --base-dir /path/to/Yanco_TC_2019_HI-pcd \
-  --list /path/to/train_list.txt --stage Z65 --voxel-sizes 6,7,8,10
+python batch.py --method voxel \
+  --base-dir datasets/yanco-2019-wheat-pcd/data/Yanco_TC_2019_HI-pcd \
+  --list datasets/yanco-2019-wheat-pcd/data/train_list.txt \
+  --stage Z65 --voxel-sizes 6,7,8,10
 
-# прогон по всей разархивированной папке (без меток биомассы)
-python batch.py --method count --input-dir /path/to/Yanco_TC_2019_HI-pcd --no-analyze
+# прогон по всей папке датасета (без меток биомассы)
+python batch.py --method count \
+  --input-dir datasets/yanco-2019-wheat-pcd/data/Yanco_TC_2019_HI-pcd \
+  --no-analyze
 ```
 
 > Поддержка стадий (`--stage`, `STAGE_TOKENS`) и формат `--list` заточены под
@@ -194,7 +251,7 @@ python analyze.py --method chm --input-csv results/volume_csv/chm/x.csv
 
 ```bash
 TPCVE_UNITS=mm
-TPCVE_BASE_DIR=data
+TPCVE_BASE_DIR=datasets/yanco-2019-wheat-pcd/data/Yanco_TC_2019_HI-pcd
 TPCVE_STAGE=Z65
 TPCVE_FLIP_Z=false
 TPCVE_DOWNSAMPLE=0
