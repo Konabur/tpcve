@@ -12,3 +12,4 @@ wheels/
 *.log
 results*/
 .env
+predict.py
