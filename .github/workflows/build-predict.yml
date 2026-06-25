@@ -119,7 +119,6 @@ jobs:
           uv run pyinstaller \
             --onefile \
             --name predict \
-            --collect-all numpy \
             --hidden-import dotenv \
             --upx \
             --strip \

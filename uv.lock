@@ -681,6 +681,18 @@ wheels = [
 ]
 
 [[package]]
+name = "laspy"
+version = "2.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9c/5d/5a540ac25dcc57fa77691363bb753363b192a3759aefef4b40e1250ddb17/laspy-2.7.0.tar.gz", hash = "sha256:f56feb5445e75d6ff12ee814aab6a35339290e75264ff277c6bf553f3025a3f5", size = 1929624, upload-time = "2026-01-14T22:18:42.856Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ed/fb/ae27ebca327117e35cc717a3a87afdcbbf10d5aac52e405d16ebe777357e/laspy-2.7.0-py3-none-any.whl", hash = "sha256:15f5344c62a1023461996bdf5d1ba5fdd813e96694a524fee712931134f3792f", size = 86056, upload-time = "2026-01-14T22:18:40.779Z" },
+]
+
+[[package]]
 name = "lz4"
 version = "4.4.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1928,9 +1940,6 @@ dependencies = [
     { name = "alphashape" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "open3d" },
-    { name = "optuna" },
-    { name = "pytest" },
     { name = "python-dotenv" },
     { name = "rosbags" },
     { name = "scikit-learn" },
@@ -1941,6 +1950,12 @@ dependencies = [
 dev = [
     { name = "nbstripout" },
     { name = "pyinstaller" },
+    { name = "pytest" },
+]
+extra = [
+    { name = "laspy" },
+    { name = "open3d" },
+    { name = "optuna" },
 ]
 
 [package.metadata]
@@ -1948,9 +1963,6 @@ requires-dist = [
     { name = "alphashape", specifier = ">=1.3.1" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=2.4.4" },
-    { name = "open3d", specifier = ">=0.19.0" },
-    { name = "optuna", specifier = ">=4.8.0" },
-    { name = "pytest", specifier = ">=9.1.1" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "rosbags", specifier = ">=0.11.0" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
@@ -1961,6 +1973,12 @@ requires-dist = [
 dev = [
     { name = "nbstripout", specifier = ">=0.9.1" },
     { name = "pyinstaller", specifier = ">=6.21.0" },
+    { name = "pytest", specifier = ">=9.1.1" },
+]
+extra = [
+    { name = "laspy", specifier = ">=2.5.4" },
+    { name = "open3d", specifier = ">=0.19.0" },
+    { name = "optuna", specifier = ">=4.8.0" },
 ]
 
 [[package]]
