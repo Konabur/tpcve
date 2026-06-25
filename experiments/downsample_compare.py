@@ -14,12 +14,11 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-import open3d as o3d
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from tpcve.cloud.generate_cloud import load_real_cloud
-from tpcve.cloud.geometry import random_downsample, sor, voxel_downsample
+from tpcve.cloud.geometry import random_downsample, sor_np, voxel_downsample_np
 from tools.autoname import build_name, default_path
 
 
@@ -86,10 +85,10 @@ def main() -> int:
 
     sizes_mm = list(args.voxel_sizes_mm)
     if args.auto:
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(pts)
-        nn = np.asarray(pcd.compute_nearest_neighbor_distance())
-        mean_nn_mm = float(nn.mean()) * 1000
+        from scipy.spatial import KDTree
+        tree = KDTree(pts)
+        nn_dist, _ = tree.query(pts, k=2)
+        mean_nn_mm = float(nn_dist[:, 1].mean()) * 1000
         print(f"  --auto: среднее nn-расстояние = {mean_nn_mm:.3f} мм")
         sizes_mm.append(mean_nn_mm)
 
@@ -114,14 +113,14 @@ def main() -> int:
     sor_on = args.sor
     for size_mm in sizes_mm:
         size_m = size_mm / 1000.0
-        v_pts = voxel_downsample(pts, size_m)
+        v_pts = voxel_downsample_np(pts, size_m)
         r_pts = random_downsample(pts, len(v_pts), args.seed)
         msg = (f"  voxel={size_mm:g} мм → {len(v_pts):,} точек "
                f"| random({args.seed}) → {len(r_pts):,}")
         if sor_on:
             n_v_before, n_r_before = len(v_pts), len(r_pts)
-            v_pts = sor(v_pts, args.sor_neighbors, args.sor_std_ratio)
-            r_pts = sor(r_pts, args.sor_neighbors, args.sor_std_ratio)
+            v_pts = sor_np(v_pts, args.sor_neighbors, args.sor_std_ratio)
+            r_pts = sor_np(r_pts, args.sor_neighbors, args.sor_std_ratio)
             msg += (f" | SOR(k={args.sor_neighbors},σ={args.sor_std_ratio}): "
                     f"voxel {n_v_before:,}→{len(v_pts):,}, "
                     f"random {n_r_before:,}→{len(r_pts):,}")

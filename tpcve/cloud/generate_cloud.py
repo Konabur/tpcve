@@ -358,12 +358,126 @@ def load_db3_cloud(filepath):
     return np.vstack(all_points)
 
 
+def _read_pcd_np(filepath: str) -> np.ndarray:
+    """Прочитать PCD файл через numpy (ASCII и binary)."""
+    with open(filepath, 'rb') as f:
+        raw = f.read()
+
+    header_end = raw.find(b'DATA ')
+    if header_end == -1:
+        raise ValueError("Invalid PCD: missing DATA header")
+
+    eol = raw.find(b'\n', header_end)
+    data_fmt = raw[header_end:eol].decode('ascii').strip()
+    data_off = eol + 1
+
+    header = raw[:header_end].decode('ascii')
+    fields = []
+    types = {}
+    sizes = {}
+    width = 0
+    height = 1
+
+    for line in header.split('\n'):
+        parts = line.strip().split()
+        if not parts:
+            continue
+        if parts[0] == 'FIELDS':
+            fields = parts[1:]
+        elif parts[0] == 'TYPE':
+            for i, t in enumerate(parts[1:]):
+                if i < len(fields):
+                    types[fields[i]] = t
+        elif parts[0] == 'SIZE':
+            for i, s in enumerate(parts[1:]):
+                if i < len(fields):
+                    sizes[fields[i]] = int(s)
+        elif parts[0] == 'WIDTH':
+            width = int(parts[1])
+        elif parts[0] == 'HEIGHT':
+            height = int(parts[1])
+
+    x_idx = fields.index('x')
+    y_idx = fields.index('y')
+    z_idx = fields.index('z')
+
+    if data_fmt == 'DATA ascii':
+        data = np.loadtxt(raw[data_off:].decode('ascii').splitlines())
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+        return data[:, [x_idx, y_idx, z_idx]].astype(np.float64)
+
+    if data_fmt != 'DATA binary':
+        raise ValueError(f"Unsupported PCD format: {data_fmt}")
+
+    n_points = width * height
+    DTYPE_MAP = {
+        ('F', 4): np.float32, ('F', 8): np.float64,
+        ('I', 1): np.int8, ('I', 2): np.int16, ('I', 4): np.int32,
+        ('U', 1): np.uint8, ('U', 2): np.uint16, ('U', 4): np.uint32,
+    }
+    dt_list = []
+    for f in fields:
+        key = (types.get(f, 'F'), sizes.get(f, 4))
+        dt_list.append(DTYPE_MAP.get(key, np.float32))
+    dt = np.dtype(list(zip(fields, dt_list)))
+    parsed = np.frombuffer(raw[data_off:], dtype=dt, count=n_points)
+    return np.column_stack([parsed['x'], parsed['y'], parsed['z']]).astype(np.float64)
+
+
+def _read_ply_np(filepath: str) -> np.ndarray:
+    with open(filepath, 'rb') as f:
+        raw = f.read()
+
+    header_end_raw = raw.find(b'end_header')
+    if header_end_raw == -1:
+        raise ValueError("Invalid PLY: missing end_header")
+    header_raw = raw[:header_end_raw]
+
+    is_ascii = any(
+        line.split() == [b'format', b'ascii', b'1.0']
+        for line in header_raw.split(b'\n')
+    )
+    if not is_ascii:
+        raise ValueError("Only ASCII PLY supported without open3d")
+
+    text = raw.decode('ascii')
+    lines = text.split('\n')
+
+    vertex_count = 0
+    props = []
+    in_vertex = False
+    header_end = 0
+
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith('element vertex'):
+            in_vertex = True
+            vertex_count = int(s.split()[-1])
+        elif s.startswith('property') and in_vertex:
+            props.append(s.split()[-1])
+        elif s == 'end_header':
+            header_end = i + 1
+            break
+        else:
+            in_vertex = False
+
+    data = np.loadtxt(lines[header_end:header_end + vertex_count])
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    x_idx = props.index('x')
+    y_idx = props.index('y')
+    z_idx = props.index('z')
+    return data[:, [x_idx, y_idx, z_idx]].astype(np.float64)
+
+
 def load_real_cloud(filepath, units='auto', verbose=True):
     """
     Загрузка реального облака точек из различных форматов.
 
     Поддерживаемые форматы:
-    - PCD, PLY, XYZ, PTS (через Open3D)
+    - PCD (ASCII + binary), PLY (ASCII), XYZ, PTS, TXT (через numpy)
     - LAS, LAZ (через laspy, если установлен)
     - DB3, ROS 2 bag (через rosbags, если установлен)
 
@@ -382,8 +496,6 @@ def load_real_cloud(filepath, units='auto', verbose=True):
             'units_detected': str (если units='auto')
         }
     """
-    import open3d as o3d
-
     ext = Path(filepath).suffix.lower()
 
     # LAS/LAZ через laspy
@@ -395,10 +507,20 @@ def load_real_cloud(filepath, units='auto', verbose=True):
         except ImportError:
             raise ImportError("Для LAS/LAZ нужен laspy: pip install laspy")
 
-    # Остальные форматы через Open3D
-    elif ext in ['.pcd', '.ply', '.xyz', '.pts', '.txt']:
-        pcd = o3d.io.read_point_cloud(filepath)
-        points = np.asarray(pcd.points)
+    # PCD через numpy
+    elif ext == '.pcd':
+        points = _read_pcd_np(filepath)
+
+    # PLY (ASCII) через numpy
+    elif ext == '.ply':
+        points = _read_ply_np(filepath)
+
+    # XYZ/PTS/TXT — простые ASCII с колонками
+    elif ext in ['.xyz', '.pts', '.txt']:
+        data = np.loadtxt(filepath)
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+        points = data[:, :3].astype(np.float64)
 
     # ROS 2 bag (.db3)
     elif ext == '.db3':

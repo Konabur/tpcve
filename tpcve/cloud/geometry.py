@@ -12,16 +12,27 @@
 """
 from __future__ import annotations
 
-import alphashape
 import numpy as np
-import open3d as o3d
 from scipy.spatial import ConvexHull, Delaunay
 from scipy.spatial.qhull import QhullError
 
 
 # --- downsample ---
 
+def voxel_downsample_np(points: np.ndarray, voxel_m: float) -> np.ndarray:
+    if len(points) == 0 or voxel_m <= 0:
+        return points
+    voxel_indices = np.floor(points / voxel_m).astype(np.int64)
+    _, inverse, counts = np.unique(voxel_indices, axis=0,
+                                   return_inverse=True, return_counts=True)
+    centroids = np.zeros((len(counts), 3), dtype=np.float64)
+    np.add.at(centroids, inverse, points)
+    centroids /= counts[:, np.newaxis]
+    return centroids
+
+
 def voxel_downsample(points: np.ndarray, voxel_m: float) -> np.ndarray:
+    import open3d as o3d
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     return np.asarray(pcd.voxel_down_sample(voxel_size=voxel_m).points)
@@ -35,9 +46,8 @@ def random_downsample(points: np.ndarray, n: int, seed: int) -> np.ndarray:
 
 
 def sor(points: np.ndarray, nb_neighbors: int, std_ratio: float) -> np.ndarray:
-    """Statistical Outlier Removal: выкидывает точки, чьё среднее расстояние до
-    nb_neighbors соседей отстоит от общего среднего больше чем на std_ratio·σ.
-    Облака не больше nb_neighbors возвращаются как есть."""
+    """Statistical Outlier Removal с open3d (тяжёлый импорт)."""
+    import open3d as o3d
     if len(points) <= nb_neighbors:
         return points
     pcd = o3d.geometry.PointCloud()
@@ -46,6 +56,19 @@ def sor(points: np.ndarray, nb_neighbors: int, std_ratio: float) -> np.ndarray:
         nb_neighbors=nb_neighbors, std_ratio=std_ratio, print_progress=False
     )
     return np.asarray(pcd_sor.points)
+
+
+def sor_np(points: np.ndarray, nb_neighbors: int, std_ratio: float) -> np.ndarray:
+    """Statistical Outlier Removal через scipy KDTree (без open3d)."""
+    if len(points) <= nb_neighbors:
+        return points
+    from scipy.spatial import KDTree
+    k = min(nb_neighbors + 1, len(points))
+    tree = KDTree(points)
+    distances, _ = tree.query(points, k=k)
+    avg_distances = distances[:, 1:].mean(axis=1)
+    mu, sigma = avg_distances.mean(), avg_distances.std()
+    return points[avg_distances <= mu + std_ratio * sigma]
 
 
 # --- alpha-shape геометрия ---
@@ -64,6 +87,7 @@ def alpha_mesh(points: np.ndarray, alpha: float):
         except QhullError:
             return None, None, 0.0
         return points[hull.vertices], hull.simplices, float(hull.volume)
+    import alphashape
     shape = alphashape.alphashape(points, alpha)
     verts = getattr(shape, "vertices", None)
     faces = getattr(shape, "faces", None)
@@ -154,6 +178,7 @@ def alpha_layered(points: np.ndarray, alpha: float, dz: float,
         if len(layer_xy) < 3:
             continue
         if with_rings:
+            import alphashape
             polygon = alphashape.alphashape(layer_xy, alpha)
             area = float(getattr(polygon, "area", 0.0) or 0.0)
             rings = _polygon_rings(polygon) if area > 0 else []

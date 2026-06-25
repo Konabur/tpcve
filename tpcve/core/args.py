@@ -52,6 +52,8 @@ def add_common_batch_args(p: argparse.ArgumentParser, *,
     p.add_argument("--height-threshold", type=float,
                    default=float(os.getenv("TPCVE_HEIGHT_THRESHOLD", "0.04")),
                    help="Порог высоты для отделения земли от растительности (м)")
+    p.add_argument("--preprocess-cache", default=None,
+                   help="Dir to cache preprocessed clouds (speeds up multi-method runs)")
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--resume", action="store_true")
     p.add_argument("--limit", type=int, default=None)
@@ -71,7 +73,7 @@ def preprocess_config_from_args(a) -> PreprocessConfig:
         units=a.units, flip_z=a.flip_z, downsample=a.downsample,
         sor_std_ratio=a.sor_std_ratio, sor_neighbors=a.sor_neighbors,
         min_range=a.min_range, height_threshold=a.height_threshold,
-        verbose=a.verbose,
+        verbose=a.verbose, cache_dir=getattr(a, "preprocess_cache", None),
     )
 
 

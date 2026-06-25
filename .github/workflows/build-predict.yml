@@ -1,0 +1,144 @@
+name: Build predict executables
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache dataset
+        id: cache-dataset
+        uses: actions/cache@v4
+        with:
+          path: datasets/yanco-2019-wheat-pcd/data
+          key: dataset-v2-${{ hashFiles('datasets/yanco-2019-wheat-pcd/**') }}
+
+      - name: Cache results
+        id: cache-results
+        uses: actions/cache@v4
+        with:
+          path: results
+          key: results-v2-${{ hashFiles('main.py', 'batch.py', 'analyze.py', 'tpcve/core/**/*.py', 'tpcve/methods/**/*.py') }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Run full pipeline
+        if: steps.cache-results.outputs.cache-hit != 'true'
+        run: uv run python main.py
+
+      - name: Generate predict.py from frozen models
+        run: uv run python tools/freeze_model.py
+
+      - name: Upload pipeline results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-results
+          path: |
+            results/
+            predict.py
+          overwrite: true
+
+  build:
+    needs: [pipeline]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact_name: predict-linux
+            asset_name: predict-linux
+          - os: windows-2022
+            artifact_name: predict-windows.exe
+            asset_name: predict-windows.exe
+          - os: macos-13
+            artifact_name: predict-macos-x64
+            asset_name: predict-macos-x64
+          - os: macos-14
+            artifact_name: predict-macos-arm64
+            asset_name: predict-macos-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download pipeline results
+        uses: actions/download-artifact@v4
+        with:
+          name: pipeline-results
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install UPX (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl
+
+      - name: Install UPX (macOS)
+        if: runner.os == 'macOS'
+        run: brew install upx
+
+      - name: Install UPX (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -sL https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip -o upx.zip
+          unzip -o upx.zip
+          echo "${{ github.workspace }}/upx-4.2.4-win64" >> $env:GITHUB_PATH
+
+      - name: Build executable
+        run: |
+          uv run pyinstaller \
+            --onefile \
+            --name predict \
+            --hidden-import dotenv \
+            --upx \
+            --strip \
+            --distpath dist \
+            --workpath build \
+            --specpath build \
+            predict.py
+
+      - name: Smoke test (--help)
+        run: |
+          dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }} --help
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }}
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }}

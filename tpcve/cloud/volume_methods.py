@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-import alphashape
 import numpy as np
 from scipy.spatial import ConvexHull
 
@@ -46,6 +45,7 @@ def _subsample(points: np.ndarray, limit: int = MAX_ALPHA_POINTS,
 def alpha_shape_volume(points: np.ndarray, alpha: float) -> float:
     if len(points) < 4:
         return 0.0
+    import alphashape
     shape = alphashape.alphashape(_subsample(points), alpha)
     return getattr(shape, "volume", 0.0)
 
@@ -54,6 +54,7 @@ def alpha2d_height_volume(points: np.ndarray, alpha: float) -> float:
     """2D alpha shape по проекции на XY × высота (z_max - z_min)."""
     if len(points) < 3:
         return 0.0
+    import alphashape
     shape = alphashape.alphashape(_subsample(points[:, :2]), alpha)
     area = getattr(shape, "area", 0.0)
     height = float(points[:, 2].max() - points[:, 2].min())
