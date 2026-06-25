@@ -24,3 +24,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["tpcve", "tools"]
+
+[dependency-groups]
+dev = [
+    "nbstripout>=0.9.1",
+]
