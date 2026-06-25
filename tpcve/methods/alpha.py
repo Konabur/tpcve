@@ -20,11 +20,10 @@ import csv
 import os
 
 import numpy as np
-import open3d as o3d
 from tqdm import tqdm
 
 from tpcve.cloud.cloud_pipeline import PreprocessConfig, preprocess_cloud
-from tpcve.cloud.geometry import _compute_one, random_downsample, voxel_downsample
+from tpcve.cloud.geometry import _compute_one, random_downsample, voxel_downsample_np
 from tools.autoname import build_name, default_path
 from tpcve import core
 
@@ -95,10 +94,10 @@ def add_analyze_args(p: argparse.ArgumentParser) -> None:
 
 
 def auto_voxel_mm(points: np.ndarray) -> float:
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    nn = np.asarray(pcd.compute_nearest_neighbor_distance())
-    return float(nn.mean()) * 1000
+    from scipy.spatial import KDTree
+    tree = KDTree(points)
+    nn_dist, _ = tree.query(points, k=2)
+    return float(nn_dist[:, 1].mean()) * 1000
 
 
 def build_tasks(item: core.InputItem, points: np.ndarray, cfg: AlphaConfig,
@@ -119,7 +118,7 @@ def build_tasks(item: core.InputItem, points: np.ndarray, cfg: AlphaConfig,
     rows: dict[tuple[str, float, float, object], dict] = {}
     for size_mm in sizes_mm:
         size_m = size_mm / 1000.0
-        v_pts = points if size_m <= 0 else voxel_downsample(points, size_m)
+        v_pts = points if size_m <= 0 else voxel_downsample_np(points, size_m)
         if len(v_pts) == 0:
             continue
         n_v = len(v_pts)
