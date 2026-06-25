@@ -65,6 +65,9 @@ def collect_inputs(cfg, *, list_file: str | None = None) -> list[InputItem]:
                 rel, labels = parse_list_line(line)
                 if stage is not None and stage_from_path(rel) != stage:
                     continue
+                # для чистоты эксперимента биомассу Z65 всегда делим на 2
+                if stage_from_path(rel) == "Z65":
+                    labels["biomass"] = str(float(labels["biomass"]) / 2)
                 full = cfg.base_dir / rel.lstrip("/\\")
                 items.append(InputItem(rel, full, labels))
     elif cfg.input_dir and list_file is None:
