@@ -402,7 +402,7 @@ def _read_pcd_np(filepath: str) -> np.ndarray:
     z_idx = fields.index('z')
 
     if data_fmt == 'DATA ascii':
-        data = np.loadtxt(raw[data_off:].decode('ascii').split('\n'))
+        data = np.loadtxt(raw[data_off:].decode('ascii').splitlines())
         if data.ndim == 1:
             data = data.reshape(1, -1)
         return data[:, [x_idx, y_idx, z_idx]].astype(np.float64)
@@ -426,9 +426,20 @@ def _read_pcd_np(filepath: str) -> np.ndarray:
 
 
 def _read_ply_np(filepath: str) -> np.ndarray:
-    """Прочитать ASCII PLY через numpy."""
     with open(filepath, 'rb') as f:
         raw = f.read()
+
+    header_end_raw = raw.find(b'end_header')
+    if header_end_raw == -1:
+        raise ValueError("Invalid PLY: missing end_header")
+    header_raw = raw[:header_end_raw]
+
+    is_ascii = any(
+        line.split() == [b'format', b'ascii', b'1.0']
+        for line in header_raw.split(b'\n')
+    )
+    if not is_ascii:
+        raise ValueError("Only ASCII PLY supported without open3d")
 
     text = raw.decode('ascii')
     lines = text.split('\n')
@@ -437,13 +448,10 @@ def _read_ply_np(filepath: str) -> np.ndarray:
     props = []
     in_vertex = False
     header_end = 0
-    is_ascii = False
 
     for i, line in enumerate(lines):
         s = line.strip()
-        if s == 'format ascii 1.0':
-            is_ascii = True
-        elif s.startswith('element vertex'):
+        if s.startswith('element vertex'):
             in_vertex = True
             vertex_count = int(s.split()[-1])
         elif s.startswith('property') and in_vertex:
@@ -453,9 +461,6 @@ def _read_ply_np(filepath: str) -> np.ndarray:
             break
         else:
             in_vertex = False
-
-    if not is_ascii:
-        raise ValueError("Only ASCII PLY supported without open3d")
 
     data = np.loadtxt(lines[header_end:header_end + vertex_count])
     if data.ndim == 1:
