@@ -11,15 +11,18 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             artifact_name: predict-linux
             asset_name: predict-linux
-          - os: windows-latest
+          - os: windows-2022
             artifact_name: predict-windows.exe
             asset_name: predict-windows.exe
-          - os: macos-latest
-            artifact_name: predict-macos
-            asset_name: predict-macos
+          - os: macos-13
+            artifact_name: predict-macos-x64
+            asset_name: predict-macos-x64
+          - os: macos-14
+            artifact_name: predict-macos-arm64
+            asset_name: predict-macos-arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -43,6 +46,12 @@ jobs:
         with:
           path: .venv
           key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+
+      - name: Cache uv packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-packages-${{ hashFiles('uv.lock') }}
 
       - name: Cache results
         id: cache-results
