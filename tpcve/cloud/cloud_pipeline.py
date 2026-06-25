@@ -3,13 +3,17 @@ voxel downsample → SOR → классификация земля/растит�
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import json
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 import numpy as np
 
 from tpcve.cloud.generate_cloud import load_cloud, load_real_cloud
 from tpcve.cloud.geometry import voxel_downsample_np, sor_np
+
+CACHE_VERSION = 1
 
 
 @dataclass
@@ -22,6 +26,7 @@ class PreprocessConfig:
     min_range: float = 0.0
     height_threshold: float = 0.04
     verbose: bool = False
+    cache_dir: str | None = None
 
 
 @dataclass
@@ -37,7 +42,59 @@ def _log(cfg: PreprocessConfig, msg: str) -> None:
         print(msg)
 
 
+def _config_hash(cfg: PreprocessConfig) -> str:
+    raw = json.dumps({k: v for k, v in asdict(cfg).items()
+                      if k not in ("cache_dir", "verbose")},
+                     sort_keys=True, default=str)
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
+def _cache_key(path: str) -> str:
+    return hashlib.md5(str(Path(path).resolve()).encode()).hexdigest()
+
+
+def _load_cache(path: str, cfg: PreprocessConfig) -> PreprocessResult | None:
+    if not cfg.cache_dir:
+        return None
+    cache_file = Path(cfg.cache_dir) / f"{_cache_key(path)}.npz"
+    if not cache_file.exists():
+        return None
+    try:
+        data = np.load(cache_file)
+        stored_cfg_hash = str(data.get("config_hash", b""))
+        if stored_cfg_hash != _config_hash(cfg):
+            cache_file.unlink(missing_ok=True)
+            return None
+        return PreprocessResult(
+            vegetation=data["vegetation"],
+            ground=data["ground"],
+            n_input=int(data["n_input"]),
+            n_after_sor=int(data["n_after_sor"]),
+        )
+    except Exception:
+        cache_file.unlink(missing_ok=True)
+        return None
+
+
+def _save_cache(path: str, cfg: PreprocessConfig, res: PreprocessResult) -> None:
+    if not cfg.cache_dir:
+        return
+    cache_dir = Path(cfg.cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"{_cache_key(path)}.npz"
+    np.savez_compressed(cache_file,
+                        vegetation=res.vegetation,
+                        ground=res.ground,
+                        n_input=res.n_input,
+                        n_after_sor=res.n_after_sor,
+                        config_hash=_config_hash(cfg))
+
+
 def preprocess_cloud(path: str, cfg: PreprocessConfig) -> PreprocessResult:
+    cached = _load_cache(path, cfg)
+    if cached is not None:
+        return cached
+
     p = Path(path)
     ext = p.suffix.lower()
 
@@ -81,9 +138,11 @@ def preprocess_cloud(path: str, cfg: PreprocessConfig) -> PreprocessResult:
     _log(cfg, f"  {p.name}: in={n_input} → sor={len(pts_filtered)} "
               f"→ veg={len(vegetation)}")
 
-    return PreprocessResult(
+    res = PreprocessResult(
         vegetation=vegetation,
         ground=ground,
         n_input=n_input,
         n_after_sor=len(pts_filtered),
     )
+    _save_cache(path, cfg, res)
+    return res

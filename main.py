@@ -28,6 +28,8 @@ def _parse_args(argv=None) -> argparse.Namespace:
                    help="Стадии через запятую: combined, Z31, Z65 — каждая запускается отдельно (по умолчанию combined,Z31,Z65)")
     p.add_argument("--workers", type=int, default=2,
                    help="Число воркеров для batch.py (default: 2)")
+    p.add_argument("--preprocess-cache", default="results/.preprocess_cache",
+                   help="Директория кеша препроцессинга (default: results/.preprocess_cache)")
     return p.parse_args(argv)
 
 
@@ -52,7 +54,7 @@ def _setup() -> tuple[Path, Path, Path, Path]:
     return REPO_DIR, DATA, TRAIN_LIST, TEST_LIST
 
 
-def _run_batch(method, stage, train_list, test_list, data, repo_dir, workers, *method_flags, **kwargs):
+def _run_batch(method, stage, train_list, test_list, data, repo_dir, workers, preprocess_cache, *method_flags, **kwargs):
     """Запустить batch.py для одного метода/стадии (train+test, analyze в цепочке)."""
     cmd = [
         sys.executable, "batch.py",
@@ -61,6 +63,7 @@ def _run_batch(method, stage, train_list, test_list, data, repo_dir, workers, *m
         "--list-test", str(test_list),
         "--base-dir", str(data),
         "--workers", str(workers),
+        "--preprocess-cache", str(preprocess_cache),
         *method_flags,
     ]
     if stage is not None:
@@ -83,7 +86,7 @@ def main(argv=None) -> int:
     results_dir = repo_dir / "results"
 
     def r(m, s, *f):
-        _run_batch(m, s, train_list, test_list, data, repo_dir, args.workers, *f)
+        _run_batch(m, s, train_list, test_list, data, repo_dir, args.workers, args.preprocess_cache, *f)
 
     # 4. Воксельный метод
     voxel_cfg = "--voxel-sizes", "10,15,20,25,30,35,40,45"
