@@ -6,8 +6,62 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  pipeline:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache dataset
+        id: cache-dataset
+        uses: actions/cache@v4
+        with:
+          path: datasets/yanco-2019-wheat-pcd/data
+          key: dataset-v2-${{ hashFiles('datasets/yanco-2019-wheat-pcd/**') }}
+
+      - name: Cache results
+        id: cache-results
+        uses: actions/cache@v4
+        with:
+          path: results
+          key: results-v2-${{ hashFiles('main.py', 'batch.py', 'analyze.py', 'tpcve/core/**/*.py', 'tpcve/methods/**/*.py') }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Run full pipeline
+        if: steps.cache-results.outputs.cache-hit != 'true'
+        run: uv run python main.py
+
+      - name: Generate predict.py from frozen models
+        run: uv run python tools/freeze_model.py
+
+      - name: Upload pipeline results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-results
+          path: |
+            results/
+            predict.py
+          overwrite: true
+
   build:
+    needs: [pipeline]
     strategy:
       matrix:
         include:
@@ -35,50 +89,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Cache dataset
-        uses: actions/cache@v4
+      - name: Download pipeline results
+        uses: actions/download-artifact@v4
         with:
-          path: datasets/yanco-2019-wheat-pcd/data
-          key: dataset-v1
+          name: pipeline-results
 
-      - name: Cache uv venv
-        uses: actions/cache@v4
+      - uses: astral-sh/setup-uv@v5
         with:
-          path: .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
-
-      - name: Cache uv packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-packages-${{ hashFiles('uv.lock') }}
-
-      - name: Cache results
-        id: cache-results
-        uses: actions/cache@v4
-        with:
-          path: results
-          key: ${{ runner.os }}-results-v1-${{ hashFiles('main.py', 'batch.py', 'analyze.py', 'tpcve/core/**/*.py', 'tpcve/methods/**/*.py') }}
-
-      - name: Install uv
-        run: pip install uv
-
-      - name: Sync dependencies
-        run: uv sync
-
-      - name: Run full pipeline
-        if: steps.cache-results.outputs.cache-hit != 'true'
-        run: uv run python main.py
-
-      - name: Generate predict.py from frozen models
-        run: uv run python tools/freeze_model.py
-
-      - name: Upload results
-        uses: actions/upload-artifact@v4
-        with:
-          name: results-${{ matrix.artifact_name }}
-          path: results/
-          overwrite: true
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install UPX (Linux)
         if: runner.os == 'Linux'
@@ -108,6 +127,10 @@ jobs:
             --workpath build \
             --specpath build \
             predict.py
+
+      - name: Smoke test (--help)
+        run: |
+          dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }} --help
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
