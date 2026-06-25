@@ -28,4 +28,5 @@ packages = ["tpcve", "tools"]
 [dependency-groups]
 dev = [
     "nbstripout>=0.9.1",
+    "pyinstaller>=6.21.0",
 ]
