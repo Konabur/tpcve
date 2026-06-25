@@ -4,7 +4,7 @@
 (TLS) и предсказание биомассы пшеницы. Три объёмных метода (вокселизация,
 alpha-shape, CHM) сравниваются с двумя простыми бейзлайнами (число точек,
 высотный перцентиль); по каждому признаку строится регрессия
-**biomass ~ признак**. 
+**biomass ~ признак**.
 
 ## Стек
 
@@ -49,19 +49,14 @@ git clone --recurse-submodules https://github.com/Konabur/tpcve.git
 cd tpcve
 ```
 
-Если клонировали без датасета, подтянуть его позже:
 
-```bash
-git submodule update --init --recursive
-```
-
-### С uv (рекомендуется)
+### uv (рекомендуется)
 
 ```bash
 uv sync
 ```
 
-### С venv + pip
+### venv + pip
 
 ```bash
 python -m venv .venv
@@ -82,7 +77,7 @@ pip install laspy
 - **`batch.py`** — считает признак(и) по набору облаков и пишет volume-CSV.
   При `--analyze` (включён по умолчанию) сразу запускает регрессию.
 - **`analyze.py`** — регрессия biomass ~ признак по volume-CSV (без `--input-csv`
-  берёт свежайший).
+  берёт последний по времени).
 
 ### Методы
 
@@ -101,7 +96,7 @@ pip install laspy
 | `count` | число точек (raw/pre) | — | `count/` |
 | `percentile` | перцентиль высоты | `--percentiles` | `percentile/` |
 
-Метод-специфичные флаги: `python -m tpcve.methods.<method> --help`.
+Метод-специфичные флаги: `batch.py --method <name> --help`.
 
 ### Входные данные: --list / --base-dir / --input-dir
 
@@ -144,9 +139,15 @@ pip install laspy
 Это TLS-сканы делянок пшеницы и тритикале (Yanco, NSW, 2019) с измеренной
 наземной биомассой — целевой переменной регрессии.
 
-**Как подключить:**
+**Подключение:**
 
-Субмодуль уже проинициализирован на шаге установки. Структура внутри субмодуля:
+Если при клонировании не использовали `--recurse-submodules`:
+
+```bash
+git submodule update --init --recursive
+```
+
+Структура внутри субмодуля:
 
 ```
 datasets/yanco-2019-wheat-pcd/
@@ -229,7 +230,7 @@ python batch.py --method alpha --list data/train.txt --alphas 10,20 --layer-dz 2
 # только batch без регрессии
 python batch.py --method count --input-dir data/Yanco-1-1-1-b --no-analyze
 
-# регрессия по готовому volume-CSV (или автопоиск свежайшего)
+# регрессия по готовому volume-CSV (или берёт последний по времени)
 python analyze.py --method voxel
 python analyze.py --method chm --input-csv results/volume_csv/chm/x.csv
 ```
@@ -241,8 +242,6 @@ python analyze.py --method chm --input-csv results/volume_csv/chm/x.csv
 - `results/regression_plots/<m>/<stem>/` — графики фитов
 
 Имя выходного CSV строится автоматически из аргументов, если `--output-csv` не задан.
-
-
 
 ## Переменные окружения
 
