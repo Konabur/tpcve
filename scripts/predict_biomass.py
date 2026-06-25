@@ -112,6 +112,10 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--min-range", type=float,
                    default=float(os.getenv("TPCVE_MIN_RANGE", "0") or 0))
     p.add_argument("--height-threshold", type=float, default=0.04)
+    p.add_argument("--div2-z65", action=argparse.BooleanOptionalAction,
+                   default=os.getenv("TPCVE_DIV2_Z65", "true").lower()
+                   in ("1", "true", "yes"),
+                   help="Делить биомассу Z65 на 2 (для приведения к Z31)")
     p.add_argument("--output-json", default=None)
     return p.parse_args(argv)
 
@@ -260,7 +264,8 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     if args.list_file:
         cloud_path, biomass_gt, _ = pick_median_biomass(
-            args.list_file, base_dir, stage=args.stage)
+            args.list_file, base_dir, stage=args.stage,
+            div2_z65=args.div2_z65)
     else:
         cloud_path = Path(args.cloud_file).resolve()
         biomass_gt = None
@@ -292,7 +297,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     print(f"Points:       in={pre.n_input}  sor={pre.n_after_sor}  "
           f"veg={len(veg)}")
     if biomass_gt is not None:
-        print(f"True biomass: {biomass_gt:.3f} g/m²")
+        print(f"True biomass: {biomass_gt:.3f} g")
     else:
         print("True biomass: N/A (single-cloud mode)")
     print()
@@ -302,11 +307,11 @@ def main(argv: Iterable[str] | None = None) -> int:
     has_gt = biomass_gt is not None
     if has_gt:
         header = (f"{'method':<6} | {'params':<28} | {'model':<6} | "
-                  f"{'x_pred':<14} | {'y_pred (g/m²)':>13} | "
-                  f"{'abs_err (g/m²)':>14} | {'rel_err':>8} | {'train R²':>8}")
+                  f"{'x_pred':<14} | {'y_pred (g)':>13} | "
+                  f"{'abs_err (g)':>14} | {'rel_err':>8} | {'train R²':>8}")
     else:
         header = (f"{'method':<6} | {'params':<28} | {'model':<6} | "
-                  f"{'x_pred':<14} | {'y_pred (g/m²)':>13} | {'train R²':>8}")
+                  f"{'x_pred':<14} | {'y_pred (g)':>13} | {'train R²':>8}")
     print(header)
     print("-" * len(header))
 

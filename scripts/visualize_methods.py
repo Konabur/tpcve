@@ -89,6 +89,10 @@ def parse_args(argv: Iterable[str] | None = None):
     p.add_argument("--min-range", type=float,
                    default=float(os.getenv("TPCVE_MIN_RANGE", "0") or 0))
     p.add_argument("--height-threshold", type=float, default=0.04)
+    p.add_argument("--div2-z65", action=argparse.BooleanOptionalAction,
+                   default=os.getenv("TPCVE_DIV2_Z65", "true").lower()
+                   in ("1", "true", "yes"),
+                   help="Делить биомассу Z65 на 2 (для приведения к Z31)")
 
     p.add_argument("--max-scatter", type=int, default=20000,
                    help="Если облако крупнее — рандомный сабсэмпл для scatter "
@@ -394,7 +398,8 @@ def main(argv: Iterable[str] | None = None) -> int:
         stage = stage_from_path(str(cloud_path))
     else:
         cloud_path, picked_bm, stage = pick_median_biomass(
-            args.list_file, Path(args.base_dir), stage=args.stage)
+            args.list_file, Path(args.base_dir), stage=args.stage,
+            div2_z65=args.div2_z65)
     if not cloud_path.exists():
         raise SystemExit(f"Не найдено: {cloud_path}")
     info = f"Облако: {cloud_path}"

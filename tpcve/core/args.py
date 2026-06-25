@@ -47,11 +47,17 @@ def add_common_batch_args(p: argparse.ArgumentParser, *,
                                            str(sor_default))))
     p.add_argument("--min-range", type=float,
                    default=float(os.getenv("TPCVE_MIN_RANGE", "0") or 0))
-    p.add_argument("--height-threshold", type=float, default=0.04)
+    p.add_argument("--height-threshold", type=float,
+                   default=float(os.getenv("TPCVE_HEIGHT_THRESHOLD", "0.04")),
+                   help="Порог высоты для отделения земли от растительности (м)")
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--resume", action="store_true")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--top", type=int, default=None)
+    p.add_argument("--div2-z65", action=argparse.BooleanOptionalAction,
+                   default=os.getenv("TPCVE_DIV2_Z65", "true").lower()
+                   in ("1", "true", "yes"),
+                   help="Делить биомассу Z65 на 2 (для приведения к Z31)")
     p.add_argument("--analyze", action=argparse.BooleanOptionalAction,
                    default=True)
     p.add_argument("--plots", action=argparse.BooleanOptionalAction,

@@ -27,6 +27,7 @@ class BatchCfg:
     base_dir: Path
     limit: int | None = None
     stage: str | None = None
+    div2_z65: bool = True
 
 
 def parse_list_line(line: str) -> tuple[str, dict]:
@@ -65,8 +66,8 @@ def collect_inputs(cfg, *, list_file: str | None = None) -> list[InputItem]:
                 rel, labels = parse_list_line(line)
                 if stage is not None and stage_from_path(rel) != stage:
                     continue
-                # для чистоты эксперимента биомассу Z65 всегда делим на 2
-                if stage_from_path(rel) == "Z65":
+                if (getattr(cfg, "div2_z65", True)
+                        and stage_from_path(rel) == "Z65"):
                     labels["biomass"] = str(float(labels["biomass"]) / 2)
                 full = cfg.base_dir / rel.lstrip("/\\")
                 items.append(InputItem(rel, full, labels))
@@ -91,6 +92,7 @@ def collect_for(cfg, list_file: str | None) -> list[InputItem]:
         input_dir=None if list_file is not None else cfg.input_dir,
         base_dir=cfg.base_dir, limit=cfg.limit,
         stage=getattr(cfg, "stage", None),
+        div2_z65=getattr(cfg, "div2_z65", True),
     ))
 
 
@@ -116,7 +118,8 @@ def stage_from_path(path: str) -> str | None:
 
 
 def pick_median_biomass(list_path: str, base_dir: Path,
-                        stage: str | None = None
+                        stage: str | None = None,
+                        div2_z65: bool = True
                         ) -> tuple[Path, float, str | None]:
     """Из --list-файла выбрать облако с медианной биомассой.
 
@@ -136,6 +139,8 @@ def pick_median_biomass(list_path: str, base_dir: Path,
             st = stage_from_path(rel)
             if stage is not None and st != stage:
                 continue
+            if div2_z65 and st == "Z65":
+                bm /= 2.0
             rows.append((base_dir / rel.lstrip("/\\"), bm, st))
     if not rows:
         msg = f"В {list_path} не нашлось валидных строк с биомассой"

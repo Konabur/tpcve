@@ -81,7 +81,8 @@ def run_batch_train_test(spec: LongBatchSpec, a, output_csv: Path) -> Path:
     и автоназвание остаются в методе; сюда приходит уже готовый spec и output_csv.
     """
     cfg = BatchCfg(a.list_file, a.input_dir, Path(a.base_dir), a.limit,
-                   stage=getattr(a, "stage", None))
+                   stage=getattr(a, "stage", None),
+                   div2_z65=getattr(a, "div2_z65", True))
     pre = preprocess_config_from_args(a)
     run_long_batch(spec, items=collect_for(cfg, None), csv_path=output_csv,
                    resume=a.resume, preprocess=pre, label="train")
