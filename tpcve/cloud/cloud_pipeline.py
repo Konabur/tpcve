@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import open3d as o3d
 
 from tpcve.cloud.generate_cloud import load_cloud, load_real_cloud
+from tpcve.cloud.geometry import voxel_downsample_np, sor_np
 
 
 @dataclass
@@ -62,21 +62,13 @@ def preprocess_cloud(path: str, cfg: PreprocessConfig) -> PreprocessResult:
         dxy = np.linalg.norm(pts[:, :2] - scanner_pos[:2], axis=1)
         pts = pts[dxy >= cfg.min_range]
 
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(pts)
-
     if cfg.downsample > 0:
-        pcd = pcd.voxel_down_sample(voxel_size=cfg.downsample)
+        pts = voxel_downsample_np(pts, cfg.downsample)
 
-    if len(pcd.points) > cfg.sor_neighbors:
-        pcd_sor, _ = pcd.remove_statistical_outlier(
-            nb_neighbors=cfg.sor_neighbors,
-            std_ratio=cfg.sor_std_ratio,
-            print_progress=False,
-        )
-        pts_filtered = np.asarray(pcd_sor.points)
-    else:
-        pts_filtered = np.asarray(pcd.points)
+    if len(pts) > cfg.sor_neighbors:
+        pts = sor_np(pts, cfg.sor_neighbors, cfg.sor_std_ratio)
+
+    pts_filtered = pts
 
     if len(pts_filtered):
         ground_mask = pts_filtered[:, 2] < cfg.height_threshold
