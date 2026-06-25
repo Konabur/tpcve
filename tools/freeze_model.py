@@ -24,8 +24,6 @@ def extract_best_row(csv_path: str) -> dict | None:
     if df.empty:
         return None
     row = df.iloc[0]
-    best_model = str(row["best_model"])
-    r2 = float(row.get(f"{best_model}_r2", 0))
 
     if "voxel_mm" in df.columns and "alpha" in df.columns:
         kind = "alpha"
