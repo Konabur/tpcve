@@ -120,16 +120,6 @@ def main(argv=None) -> int:
         print(" ", p.relative_to(results_dir))
 
     # 9. Предсказание биомассы (демо)
-    reg = results_dir / "regression_csv"
-
-    def pick_csv(method, stage):
-        cands = [p for p in (reg / method).glob("*.csv")
-                 if not p.stem.endswith("_test")
-                 and (f"_{stage}_" in f"_{p.stem}_" if stage
-                      else ("_Z31_" not in p.stem and "_Z65_" not in p.stem))]
-        assert len(cands) == 1, f"{method}/{stage}: ожидал 1 CSV, нашёл {len(cands)}: {cands}"
-        return cands[0]
-
     for stage in stages:
         label = stage or "combined"
         print("\n" + "=" * 70)
@@ -139,12 +129,9 @@ def main(argv=None) -> int:
             sys.executable, "scripts/predict_biomass.py",
             "--list", str(test_list),
             "--base-dir", str(data),
-            "--voxel-csv",  str(pick_csv("voxel", stage)),
-            "--alpha-csv",  str(pick_csv("alpha", stage)),
-            "--chm-csv",    str(pick_csv("chm", stage)),
-            "--height-csv", str(pick_csv("percentile", stage)),
-            "--count-csv",  str(pick_csv("count", stage)),
         ]
+        if stage is not None:
+            cmd.extend(["--stage", stage])
         print("\n$ " + " ".join(cmd) + "\n")
         p = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
         print(p.stdout, end="")

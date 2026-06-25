@@ -35,6 +35,42 @@ from tpcve.cloud.geometry import alpha_layered
 from tpcve.core.io import pick_median_biomass
 from tpcve.cloud.volume_methods import voxel_volume
 
+RESULTS_ROOT = Path("results")
+
+
+METHOD_CSV_DIRS: dict[str, str] = {
+    "voxel": "voxel",
+    "alpha": "alpha",
+    "chm": "chm",
+    "height": "percentile",
+    "count": "count",
+}
+
+
+def _auto_discover_csv(method: str, stage: str | None) -> Path:
+    """Найти regression-CSV для method по стадии в results/regression_csv/.
+
+    Без stage — CSV без _Z31_/_Z65_ в имени.
+    """
+    d = RESULTS_ROOT / "regression_csv" / METHOD_CSV_DIRS[method]
+    cands = [p for p in d.glob("*.csv")
+             if not p.stem.endswith("_test")
+             and (f"_{stage}_" in f"_{p.stem}_" if stage
+                  else ("_Z31_" not in p.stem and "_Z65_" not in p.stem))]
+    if not cands:
+        raise SystemExit(
+            f"Не найден regression CSV для method={method!r}, stage={stage}"
+            f" в {d}/")
+    if len(cands) > 1:
+        cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return cands[0]
+
+
+def _resolve_csv(csv_path: str | None, method: str, stage: str | None) -> Path:
+    if csv_path:
+        return Path(csv_path)
+    return _auto_discover_csv(method, stage)
+
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     pre = argparse.ArgumentParser(add_help=False)
@@ -48,6 +84,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--env-file", default=None)
+    p.add_argument("--stage", default=None, choices=["Z31", "Z65"],
+                   help="Фильтр стадии роста; медиана считается только по этой стадии")
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--list", dest="list_file",
                      help="Список plot'ов (формат core.io.parse_list_line); "
@@ -55,11 +93,11 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     src.add_argument("--cloud", dest="cloud_file",
                      help="Путь к одному облаку (без GT биомассы)")
     p.add_argument("--base-dir", default=os.getenv("TPCVE_BASE_DIR", "data"))
-    p.add_argument("--voxel-csv", required=True)
-    p.add_argument("--alpha-csv", required=True)
-    p.add_argument("--chm-csv", required=True)
-    p.add_argument("--height-csv", required=True)
-    p.add_argument("--count-csv", required=True)
+    p.add_argument("--voxel-csv", default=None)
+    p.add_argument("--alpha-csv", default=None)
+    p.add_argument("--chm-csv", default=None)
+    p.add_argument("--height-csv", default=None)
+    p.add_argument("--count-csv", default=None)
 
     p.add_argument("--units", default=os.getenv("TPCVE_UNITS", "auto"),
                    choices=["auto", "m", "cm", "mm"])
@@ -222,17 +260,18 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     if args.list_file:
         cloud_path, biomass_gt, _ = pick_median_biomass(
-            args.list_file, base_dir, stage=None)
+            args.list_file, base_dir, stage=args.stage)
     else:
         cloud_path = Path(args.cloud_file).resolve()
         biomass_gt = None
 
+    stage = args.stage
     methods = [
-        _load_voxel(args.voxel_csv),
-        _load_alpha(args.alpha_csv),
-        _load_chm(args.chm_csv),
-        _load_height(args.height_csv),
-        _load_count(args.count_csv),
+        _load_voxel(_resolve_csv(args.voxel_csv, "voxel", stage)),
+        _load_alpha(_resolve_csv(args.alpha_csv, "alpha", stage)),
+        _load_chm(_resolve_csv(args.chm_csv, "chm", stage)),
+        _load_height(_resolve_csv(args.height_csv, "height", stage)),
+        _load_count(_resolve_csv(args.count_csv, "count", stage)),
     ]
 
     cfg = PreprocessConfig(
