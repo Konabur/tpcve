@@ -44,6 +44,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      - name: Install dependencies
+        run: uv sync --frozen
+
       - name: Run full pipeline
         if: steps.cache-results.outputs.cache-hit != 'true'
         run: uv run python main.py
@@ -98,6 +101,9 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen
 
       - name: Install UPX (Linux)
         if: runner.os == 'Linux'
