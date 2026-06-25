@@ -113,10 +113,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/predict${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          path: dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }}
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/predict${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          files: dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }}
