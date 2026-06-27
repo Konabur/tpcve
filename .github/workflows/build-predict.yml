@@ -74,9 +74,6 @@ jobs:
           - os: windows-2022
             artifact_name: predict-windows.exe
             asset_name: predict-windows.exe
-          - os: macos-13
-            artifact_name: predict-macos-x64
-            asset_name: predict-macos-x64
           - os: macos-14
             artifact_name: predict-macos-arm64
             asset_name: predict-macos-arm64
