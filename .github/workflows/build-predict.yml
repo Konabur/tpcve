@@ -189,6 +189,8 @@ jobs:
 
           Собраны PyInstaller (onefile) и упакованы UPX. Не требуют Python.
 
+          **predict.py** — скрипт для предсказания (без собранного бинарника).
+
           ## Архив с графиками
 
           **figures-summary.zip** — итоговые графики из `results/figures/summary/`.
@@ -198,11 +200,18 @@ jobs:
           Директория `results/` (volume_csv, regression_csv, regression_plots,
           optimize, downsample, figures) — в артефакте **pipeline-results** этого workflow-рана.
 
-          ## Как использовать
+          ## Как использовать (бинарник)
 
           ```
           ./predict --cloud file.pcd
           ./predict --list data/list.txt --base-dir data
+          ```
+
+          ## Как использовать (predict.py)
+
+          ```bash
+          uv run predict.py --cloud file.pcd
+          uv run predict.py --list data/list.txt --base-dir data
           ```
 
           На входе PCD-файлы, на выходе CSV с предсказанной биомассой (г).
@@ -220,6 +229,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" predict-linux --clobber
           gh release upload "$GITHUB_REF_NAME" predict-windows.exe --clobber
           gh release upload "$GITHUB_REF_NAME" predict-macos-arm64 --clobber
+          gh release upload "$GITHUB_REF_NAME" predict.py --clobber
           gh release upload "$GITHUB_REF_NAME" figures-summary.zip --clobber
 
 
