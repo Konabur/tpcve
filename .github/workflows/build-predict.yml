@@ -107,11 +107,14 @@ jobs:
 
       - name: Install UPX (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl
+        run: |
+          curl -sL https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz -o upx.tar.xz
+          tar -xf upx.tar.xz
+          echo "${{ github.workspace }}/upx-4.2.4-amd64_linux" >> $GITHUB_PATH
 
       - name: Install UPX (macOS)
         if: runner.os == 'macOS'
-        run: brew install upx
+        run: HOMEBREW_NO_AUTO_UPDATE=1 brew install upx
 
       - name: Install UPX (Windows)
         if: runner.os == 'Windows'
@@ -121,12 +124,12 @@ jobs:
           echo "${{ github.workspace }}/upx-4.2.4-win64" >> $env:GITHUB_PATH
 
       - name: Build executable
+        shell: bash
         run: |
           uv run pyinstaller \
             --onefile \
             --name predict \
             --hidden-import dotenv \
-            --upx \
             --strip \
             --distpath dist \
             --workpath build \
