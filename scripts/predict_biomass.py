@@ -25,13 +25,12 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 import numpy as np
-import open3d as o3d
 import pandas as pd
 from dotenv import load_dotenv
 
 from tpcve.methods.chm import chm_volume
 from tpcve.cloud.cloud_pipeline import PreprocessConfig, preprocess_cloud
-from tpcve.cloud.geometry import alpha_layered
+from tpcve.cloud.geometry import alpha_layered, voxel_downsample_np
 from tpcve.core.io import pick_median_biomass
 from tpcve.cloud.volume_methods import voxel_volume
 
@@ -237,10 +236,7 @@ def _compute_x(method: dict, veg: np.ndarray, pre) -> float:
     if kind == "alpha":
         pts = veg
         if p["voxel_mm"] > 0 and len(pts):
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(pts)
-            pcd = pcd.voxel_down_sample(voxel_size=p["voxel_mm"] / 1000.0)
-            pts = np.asarray(pcd.points)
+            pts = voxel_downsample_np(pts, p["voxel_mm"] / 1000.0)
         _, vol = alpha_layered(pts, p["alpha"], p["dz_m"], with_rings=False)
         return float(vol)
     if kind == "chm":
