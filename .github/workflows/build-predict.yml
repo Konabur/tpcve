@@ -130,8 +130,9 @@ jobs:
             --onefile \
             --name predict \
             --hidden-import dotenv \
-            --strip \
             --noupx \
+            --collect-all numpy \
+            --collect-all scipy \
             --distpath dist \
             --workpath build \
             --specpath build \
