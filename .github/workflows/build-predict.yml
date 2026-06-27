@@ -129,7 +129,16 @@ jobs:
             --hidden-import dotenv \
             --noupx \
             --collect-all numpy \
-            --collect-all scipy \
+            --exclude-module scipy.stats \
+            --exclude-module scipy.signal \
+            --exclude-module scipy.fft \
+            --exclude-module scipy.optimize \
+            --exclude-module scipy.interpolate \
+            --exclude-module scipy.integrate \
+            --exclude-module scipy.io \
+            --exclude-module scipy.ndimage \
+            --exclude-module matplotlib \
+            --exclude-module pandas \
             --distpath dist \
             --workpath build \
             --specpath build \
