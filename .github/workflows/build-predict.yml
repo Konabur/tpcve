@@ -131,6 +131,7 @@ jobs:
             --name predict \
             --hidden-import dotenv \
             --strip \
+            --noupx \
             --distpath dist \
             --workpath build \
             --specpath build \
