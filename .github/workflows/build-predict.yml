@@ -154,12 +154,49 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }}
 
+      - name: Write release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## Исполняемые файлы
+
+          - **predict-linux** — Linux (x86_64)
+          - **predict-macos-arm64** — macOS (Apple Silicon)
+          - **predict-windows.exe** — Windows (x86_64)
+
+          Собраны PyInstaller (onefile) и упакованы UPX. Не требуют Python.
+
+          ## Архив с графиками
+
+          **figures-summary.zip** — итоговые графики из `results/figures/summary/`.
+
+          ## Полные результаты пайплайна
+
+          Директория `results/` (volume_csv, regression_csv, regression_plots,
+          optimize, downsample, figures) — в артефакте **pipeline-results** этого workflow-рана.
+
+          ## Как использовать
+
+          ```
+          ./predict --cloud file.pcd
+          ./predict --list data/list.txt --base-dir data
+          ```
+
+          На входе PCD-файлы, на выходе CSV с предсказанной биомассой (г).
+
+          EOF
+
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            2>/dev/null || true
           gh release upload "$GITHUB_REF_NAME" dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }} --clobber
           if [ ${{ runner.os }} = Linux ]; then
-            (cd results/figures && zip -r - summary/) | gh release upload "$GITHUB_REF_NAME" - --clobber --name figures-summary.zip
+            zip -r figures-summary.zip results/figures/summary/
+            gh release upload "$GITHUB_REF_NAME" figures-summary.zip --clobber
           fi
