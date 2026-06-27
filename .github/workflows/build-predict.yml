@@ -154,8 +154,31 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }}
 
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: predict-*
+          path: artifacts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pipeline-results
+
+      - name: Prepare assets
+        run: |
+          mv artifacts/predict-linux/predict predict-linux
+          mv artifacts/predict-windows.exe/predict.exe predict-windows.exe
+          mv artifacts/predict-macos-arm64/predict predict-macos-arm64
+          rm -rf artifacts
+          zip -r figures-summary.zip results/figures/summary/
+
       - name: Write release notes
-        if: startsWith(github.ref, 'refs/tags/')
         run: |
           cat > release-notes.md << 'EOF'
           ## Исполняемые файлы
@@ -186,8 +209,7 @@ jobs:
 
           EOF
 
-      - name: Upload to release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -195,8 +217,9 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md \
             2>/dev/null || true
-          gh release upload "$GITHUB_REF_NAME" dist/predict${{ matrix.os == 'windows-2022' && '.exe' || '' }} --clobber
-          if [ ${{ runner.os }} = Linux ]; then
-            zip -r figures-summary.zip results/figures/summary/
-            gh release upload "$GITHUB_REF_NAME" figures-summary.zip --clobber
-          fi
+          gh release upload "$GITHUB_REF_NAME" predict-linux --clobber
+          gh release upload "$GITHUB_REF_NAME" predict-windows.exe --clobber
+          gh release upload "$GITHUB_REF_NAME" predict-macos-arm64 --clobber
+          gh release upload "$GITHUB_REF_NAME" figures-summary.zip --clobber
+
+
