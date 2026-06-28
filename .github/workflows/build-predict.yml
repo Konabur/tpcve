@@ -160,6 +160,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         with:
@@ -187,6 +189,8 @@ jobs:
           fi
 
           cat > release-notes.md << EOF
+          $(if [ -n "$CHANGELOG" ]; then echo "## Изменения с момента предыдущего релиза"; echo; echo "<details>"; echo "<summary>\`${PREV_TAG}\` → \`${GITHUB_REF_NAME}\`</summary>"; echo; echo "\`\`\`"; echo "$CHANGELOG"; echo "\`\`\`"; echo "</details>"; echo; fi)
+
           ## Исполняемые файлы
 
           - **predict-linux** — Linux (x86_64)
@@ -205,8 +209,6 @@ jobs:
 
           Директория `results/` (volume_csv, regression_csv, regression_plots,
           optimize, downsample, figures) — в артефакте **pipeline-results** этого workflow-рана.
-
-          $(if [ -n "$CHANGELOG" ]; then echo "## Изменения с момента предыдущего релиза"; echo; echo "<details>"; echo "<summary>\`${PREV_TAG}\` → \`${GITHUB_REF_NAME}\` (${GITHUB_REF_NAME})</summary>"; echo; echo "\`\`\`"; echo "$CHANGELOG"; echo "\`\`\`"; echo "</details>"; fi)
 
           ## Как использовать (бинарник)
 
