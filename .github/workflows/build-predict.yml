@@ -51,8 +51,22 @@ jobs:
         if: steps.cache-results.outputs.cache-hit != 'true'
         run: uv run python main.py
 
+      - name: Cache predict.py
+        id: cache-predict
+        uses: actions/cache@v4
+        with:
+          path: predict.py
+          key: predict-${{ hashFiles('main.py', 'batch.py', 'analyze.py', 'tools/freeze_model.py', '.github/workflows/build-predict.yml', 'tpcve/core/**/*.py', 'tpcve/methods/**/*.py') }}
+
       - name: Generate predict.py from frozen models
+        if: steps.cache-predict.outputs.cache-hit != 'true'
         run: uv run python tools/freeze_model.py --stage all
+
+      - name: Package figures zip
+        run: |
+          if [ -d results/figures/summary ]; then
+            cd results && zip -X -r ../figures-summary.zip figures/summary/
+          fi
 
       - name: Upload pipeline results
         uses: actions/upload-artifact@v4
@@ -61,6 +75,7 @@ jobs:
           path: |
             results/
             predict.py
+            figures-summary.zip
           overwrite: true
 
   build:
@@ -102,32 +117,41 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Install UPX (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          curl -sL https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz -o upx.tar.xz
-          tar -xf upx.tar.xz
-          echo "${{ github.workspace }}/upx-4.2.4-amd64_linux" >> $GITHUB_PATH
-
-      - name: Install UPX (macOS)
-        if: runner.os == 'macOS'
-        run: HOMEBREW_NO_AUTO_UPDATE=1 brew install upx
+      - name: Cache UPX (Windows)
+        if: runner.os == 'Windows'
+        id: cache-upx
+        uses: actions/cache@v4
+        with:
+          path: upx-4.2.4-win64
+          key: upx-4.2.4-windows
 
       - name: Install UPX (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.cache-upx.outputs.cache-hit != 'true'
         run: |
           curl -sL https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip -o upx.zip
           unzip -o upx.zip
           echo "${{ github.workspace }}/upx-4.2.4-win64" >> $env:GITHUB_PATH
 
-      - name: Build executable
+      - name: Compute predict.py hash
+        id: hash
+        run: echo "sha256=$(python -c "import hashlib; print(hashlib.sha256(open('predict.py','rb').read()).hexdigest())")" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Cache binary (by predict.py hash)
+        id: cache-binary
+        uses: actions/cache@v4
+        with:
+          path: dist/predict${{ runner.os == 'Windows' && '.exe' || '' }}
+          key: binary-${{ runner.os }}-${{ steps.hash.outputs.sha256 }}-${{ hashFiles('uv.lock') }}
+
+      - name: Build executable (if cache miss)
+        if: steps.cache-binary.outputs.cache-hit != 'true'
         shell: bash
         run: |
           uv run pyinstaller \
             --onefile \
             --name predict \
             --hidden-import dotenv \
-            --noupx \
             --collect-all numpy \
             --exclude-module scipy.stats \
             --exclude-module scipy.signal \
@@ -178,7 +202,6 @@ jobs:
           mv artifacts/predict-windows.exe/predict.exe predict-windows.exe
           mv artifacts/predict-macos-arm64/predict predict-macos-arm64
           rm -rf artifacts
-          zip -r figures-summary.zip results/figures/summary/
 
       - name: Write release notes
         run: |
