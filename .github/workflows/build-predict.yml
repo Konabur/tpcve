@@ -52,7 +52,7 @@ jobs:
         run: uv run python main.py
 
       - name: Generate predict.py from frozen models
-        run: uv run python tools/freeze_model.py
+        run: uv run python tools/freeze_model.py --stage all
 
       - name: Upload pipeline results
         uses: actions/upload-artifact@v4
@@ -180,7 +180,13 @@ jobs:
 
       - name: Write release notes
         run: |
-          cat > release-notes.md << 'EOF'
+          PREV_TAG=$(git tag --sort=-creatordate | sed -n '2p')
+          CHANGELOG=""
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --format="%s" --no-decorate "${PREV_TAG}..${GITHUB_REF_NAME}" 2>/dev/null || true)
+          fi
+
+          cat > release-notes.md << EOF
           ## Исполняемые файлы
 
           - **predict-linux** — Linux (x86_64)
@@ -200,19 +206,21 @@ jobs:
           Директория `results/` (volume_csv, regression_csv, regression_plots,
           optimize, downsample, figures) — в артефакте **pipeline-results** этого workflow-рана.
 
+          $(if [ -n "$CHANGELOG" ]; then echo "## Изменения с момента предыдущего релиза"; echo; echo "<details>"; echo "<summary>\`${PREV_TAG}\` → \`${GITHUB_REF_NAME}\` (${GITHUB_REF_NAME})</summary>"; echo; echo "\`\`\`"; echo "$CHANGELOG"; echo "\`\`\`"; echo "</details>"; fi)
+
           ## Как использовать (бинарник)
 
-          ```
+          \`\`\`
           ./predict --cloud file.pcd
           ./predict --list data/list.txt --base-dir data
-          ```
+          \`\`\`
 
           ## Как использовать (predict.py)
 
-          ```bash
+          \`\`\`bash
           uv run predict.py --cloud file.pcd
           uv run predict.py --list data/list.txt --base-dir data
-          ```
+          \`\`\`
 
           На входе PCD-файлы, на выходе CSV с предсказанной биомассой (г).
 
